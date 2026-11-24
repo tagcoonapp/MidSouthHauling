@@ -5,6 +5,8 @@ export interface Env {
   FILES: R2Bucket;
   LOGIN_LIMITER?: RateLimit;
   TIMEZONE: string;
+  /** Secret. Set in Cloudflare → midsouthhauling → Settings → Variables and Secrets. */
+  ANTHROPIC_API_KEY?: string;
 }
 
 export interface SessionUser {

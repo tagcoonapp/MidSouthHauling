@@ -172,9 +172,10 @@ export interface OfficeJob extends DriverJob {
   createdAt: string;
   moody: boolean;
   amountOverrideCents: number | null;
+  photoRead: import("./photo-read").PhotoReadState;
   events?: JobEvent[];
   /** Live expense draft (submitted jobs, scheduler only). */
-  draft?: import("./pricing").ExpenseDraft & { nameMatches: boolean | null };
+  draft?: import("./pricing").ExpenseDraft & { nameMatches: boolean | null; photoChecks: import("./photo-read").PhotoCheck[]; serialFromPhoto: boolean };
   /** Expenses frozen at approval. */
   expenses?: ApprovedExpense[];
 }

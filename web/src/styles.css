@@ -234,3 +234,5 @@ code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.
   .form.grid2 { grid-template-columns: 1fr; }
   .form .span2 { grid-column: auto; }
 }
+.photo-read { background: #f8fafc; border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 14px; }
+.read-facts dd { text-align: left; font-weight: 600; overflow-wrap: anywhere; }

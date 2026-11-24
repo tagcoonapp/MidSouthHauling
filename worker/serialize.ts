@@ -1,4 +1,11 @@
 import type { CallStatus, DriverJob, JobStage, JobType, OfficeJob, Photo } from "../shared/domain";
+import type { PhotoRead, PhotoReadState, PhotoReadStatus } from "../shared/photo-read";
+
+export function photoReadOf(r: JobRow): PhotoReadState {
+  let result: PhotoRead | null = null;
+  try { result = r.ai_result ? (JSON.parse(r.ai_result) as PhotoRead) : null; } catch { result = null; }
+  return { status: (r.ai_status || "none") as PhotoReadStatus, result, error: r.ai_error, readAt: r.ai_read_at };
+}
 
 export interface JobRow {
   id: string;
@@ -28,6 +35,10 @@ export interface JobRow {
   lot_taken_to: string;
   moody: number;
   amount_override_cents: number | null;
+  ai_status: string;
+  ai_result: string | null;
+  ai_error: string | null;
+  ai_read_at: string | null;
 }
 
 export interface PhotoRow {
@@ -82,5 +93,6 @@ export function toOfficeJob(r: JobRow, photos: PhotoRow[]): OfficeJob {
     createdAt: r.created_at,
     moody: !!r.moody,
     amountOverrideCents: r.amount_override_cents,
+    photoRead: photoReadOf(r),
   };
 }

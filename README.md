@@ -33,10 +33,16 @@ Deploy: `npm run deploy` (builds, runs tests, applies new migrations, uploads). 
 Worker at build time (`scripts/embed-assets.mjs`) so a deploy is a single script upload; Claude cloud sessions
 can't use Wrangler's separate static-asset upload because their proxy replaces its one-time upload token.
 
+## Photo reading (Claude Haiku)
+When a driver submits, the Worker sends the job's photos to Claude Haiku (`worker/photo-reader.ts`), which reads the
+happy sheet (serial, customer name, the "LOT - NAME - TYPE - MILES" top line, signature) and the serial on the building.
+`shared/photo-read.ts` checks that against the job and the driver's answers; a Moody lot ticks Moody automatically.
+Needs the secret `ANTHROPIC_API_KEY` (Cloudflare → Workers & Pages → midsouthhauling → Settings → Variables and Secrets).
+Without it, Pending says photo reading isn't set up and everything else works.
+
 ## Brand
 Colors are the variables at the top of `web/src/styles.css` (`--brand`, `--accent`). The logo is `web/public/icon.svg`.
 
 ## Coming next
 1. Claude in Chrome reads new jobs from NetSuite Employee Center into the pipeline.
-2. AI checks of the happy sheet and serial plate, pricing from the price sheets, and an expense-report draft for approval.
 3. Accounting: expensed totals, driver pay, fuel, truck costs, mileage, Excel export.

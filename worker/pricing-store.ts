@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS, draftExpenses, namesMatch, type PriceRow, type PricingSettings, type RepoRate } from "../shared/pricing";
 import type { JobType } from "../shared/domain";
-import type { JobRow } from "./serialize";
+import { photoReadOf, type JobRow } from "./serialize";
+import { checkPhotoRead, pricingSerial } from "../shared/photo-read";
 
 export interface PricingData {
   prices: PriceRow[];
@@ -30,11 +31,13 @@ export async function loadPricing(db: D1Database): Promise<PricingData> {
 
 /** The expense draft for a job, with the scheduler's amount override applied to the main line. */
 export function draftForJob(job: JobRow, pricing: PricingData) {
+  const read = photoReadOf(job).result;
+  const { serial, fromPhoto } = pricingSerial(job.serial, read);
   const draft = draftExpenses(
     {
       jobType: job.job_type as JobType,
       customerName: job.reported_customer_name || job.customer_name,
-      serial: job.serial,
+      serial,
       miles: job.miles,
       moody: !!job.moody,
       lotTakenTo: job.lot_taken_to,
@@ -55,5 +58,11 @@ export function draftForJob(job: JobRow, pricing: PricingData) {
   }
   const nameMatches = job.reported_customer_name.trim() ? namesMatch(job.reported_customer_name, job.customer_name) : null;
   if (nameMatches === false) draft.problems.push(`Driver wrote "${job.reported_customer_name}" but the job is for "${job.customer_name}".`);
-  return { ...draft, nameMatches };
+  if (fromPhoto) draft.problems = draft.problems.filter((p) => p !== "No serial number on this job.");
+  const photoChecks = read
+    ? checkPhotoRead(read, { customerName: job.customer_name, serial: job.serial, jobType: job.job_type as JobType, miles: job.miles })
+    : [];
+  // Serial or type mismatches block a one-click approve; softer notes (hard to read, comments) are shown but don't.
+  for (const c of photoChecks) if (!c.ok && /doesn't match|says .* but the job|No happy sheet|Couldn't read a serial|miles; driver entered/.test(c.text)) draft.problems.push(`Photos: ${c.text}`);
+  return { ...draft, nameMatches, photoChecks, serialFromPhoto: fromPhoto };
 }

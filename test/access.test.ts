@@ -10,6 +10,7 @@ const row: JobRow = {
   scheduled_date: "2026-11-23", scheduled_time: "11:30 AM", office_notes: "", driver_notes: "", pdf_key: null,
   submitted_at: null, created_at: "2026-11-20T00:00:00Z",
   reported_customer_name: "", miles: 31, lot_taken_to: "", moody: 0, amount_override_cents: 38500,
+  ai_status: "done", ai_result: "{\"serialOnHappySheet\":\"X\"}", ai_error: null, ai_read_at: null,
 };
 
 describe("roles", () => {

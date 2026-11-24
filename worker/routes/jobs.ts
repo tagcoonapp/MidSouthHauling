@@ -15,6 +15,7 @@ import {
   type JobType,
 } from "../../shared/domain";
 import { draftForJob, loadPricing } from "../pricing-store";
+import { readJobPhotos } from "../photo-reader";
 import { newId, requirePermission } from "../auth";
 import { addDays, isIsoDate, localToday } from "../dates";
 import type { AppEnv, SessionUser } from "../env";
@@ -402,6 +403,9 @@ jobRoutes.post("/:id/submit", requirePermission("submitJobs"), async (c) => {
     .bind(job.id)
     .run();
   await logEvent(c.env.DB, job.id, user.id, "submitted", `Submitted as ${JOB_TYPE_LABELS[job.job_type as keyof typeof JOB_TYPE_LABELS]}`);
+  // Read the photos in the background; the driver doesn't wait for it.
+  await c.env.DB.prepare("UPDATE jobs SET ai_status = 'reading' WHERE id = ?").bind(job.id).run();
+  c.executionCtx.waitUntil(readJobPhotos(c.env, job.id, user.id));
   return respondJob(c, (await getJob(c.env.DB, job.id))!);
 });
 
@@ -426,6 +430,14 @@ jobRoutes.post("/:id/approve", requirePermission("approveExpenses"), async (c) =
   );
   const total = draft.lines.reduce((t, l) => t + l.amountCents, 0);
   await logEvent(c.env.DB, job.id, userId, "approved", `Approved $${(total / 100).toFixed(2)}${draft.lines.length > 1 ? ` (${draft.lines.length} expenses)` : ""}`);
+  return respondJob(c, (await getJob(c.env.DB, job.id))!, true);
+});
+
+jobRoutes.post("/:id/read-photos", requirePermission("approveExpenses"), async (c) => {
+  const job = await getJob(c.env.DB, c.req.param("id"));
+  if (!job) return c.json({ error: "Job not found." }, 404);
+  if (job.stage === "approved") return c.json({ error: "This job is already approved." }, 400);
+  await readJobPhotos(c.env, job.id, c.get("user").id);
   return respondJob(c, (await getJob(c.env.DB, job.id))!, true);
 });
 

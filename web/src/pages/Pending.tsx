@@ -8,7 +8,12 @@ import { fmtDateTime, fmtDay, money } from "../util";
 
 /** Scheduler only: submitted jobs with the drafted expense, checks, and Approve / Send back. */
 export function Pending() {
-  const q = useQuery({ queryKey: ["pending"], queryFn: () => api.get<OfficeJob[]>("/pending") });
+  const q = useQuery({
+    queryKey: ["pending"],
+    queryFn: () => api.get<OfficeJob[]>("/pending"),
+    // While Claude is reading someone's photos, check back every few seconds.
+    refetchInterval: (query) => ((query.state.data as OfficeJob[] | undefined)?.some((j) => j.photoRead.status === "reading") ? 4000 : 60_000),
+  });
   if (!q.data) return <div className="muted">Loading…</div>;
   const total = q.data.reduce((t, j) => t + (j.draft?.lines.reduce((s, l) => s + l.amountCents, 0) ?? 0), 0);
   return (
@@ -86,6 +91,8 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
           <PhotoGrid photos={j.photos} editable={false} />
           {j.driverNotes && <div className="note-box mt"><b>Driver notes:</b> {j.driverNotes}</div>}
 
+          <PhotoReadBox job={j} />
+
           <h3 className="sec-head">Checks</h3>
           {j.reportedCustomerName && (
             <div className={`check ${d.nameMatches ? "ok" : "warn"}`}>
@@ -93,9 +100,12 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
             </div>
           )}
           {d.serialInfo && (
-            <div className="check ok">✅ <div><b>Serial {j.serial}</b> = {sizeLabel(d.serialInfo)}{d.listPriceCents !== null ? `, list price ${money(d.listPriceCents)}` : ""}. Compare with the serial plate photo.</div></div>
+            <div className="check ok">✅ <div><b>Serial {d.serialFromPhoto ? (j.photoRead.result?.serialOnHappySheet ?? j.photoRead.result?.serialOnBuilding) : j.serial}</b> = {sizeLabel(d.serialInfo)}{d.listPriceCents !== null ? `, list price ${money(d.listPriceCents)}` : ""}.{d.serialFromPhoto ? " (Read from the photos; the job had no serial.)" : ""}</div></div>
           )}
-          {d.problems.filter((p) => !p.startsWith("Driver wrote")).map((p) => (
+          {d.photoChecks.map((c) => (
+            <div key={c.text} className={`check ${c.ok ? "ok" : "warn"}`}>{c.ok ? "✅" : "⚠️"} <div>{c.text}</div></div>
+          ))}
+          {d.problems.filter((p) => !p.startsWith("Driver wrote") && !p.startsWith("Photos: ")).map((p) => (
             <div key={p} className="check warn">⚠️ <div>{p}</div></div>
           ))}
         </div>
@@ -116,7 +126,7 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
             {j.jobType === "new" && (
               <label className="checkbox span2">
                 <input type="checkbox" checked={moody} onChange={(e) => { setMoody(e.target.checked); patch.mutate({ moody: e.target.checked }, { onError: () => setMoody(j.moody) }); }} />
-                <span>Happy sheet says <b>Moody</b> (10% instead of 5%)</span>
+                <span>Building came from the <b>Moody</b> lot (10% instead of 5%)</span>
               </label>
             )}
             <label>Custom amount ($)
@@ -160,5 +170,39 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
         </div>
       </div>
     </article>
+  );
+}
+
+function PhotoReadBox({ job }: { job: OfficeJob }) {
+  const qc = useQueryClient();
+  const reread = useMutation({
+    mutationFn: () => api.post(`/jobs/${job.id}/read-photos`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["pending"] }),
+  });
+  const pr = job.photoRead;
+  const r = pr.result;
+  return (
+    <div className="photo-read">
+      <div className="row">
+        <h3 className="sec-head" style={{ margin: 0 }}>What the photos say</h3>
+        {pr.status !== "reading" && job.photos.length > 0 && (
+          <button className="btn small" disabled={reread.isPending} onClick={() => reread.mutate()}>{reread.isPending ? "Reading…" : r ? "Read again" : "Read photos"}</button>
+        )}
+      </div>
+      {pr.status === "reading" && <div className="muted small mt">Claude is reading the photos…</div>}
+      {(pr.status === "error" || pr.status === "unavailable") && <div className="check warn mt">⚠️ <div>{pr.error}</div></div>}
+      {pr.status === "none" && !r && <div className="muted small mt">Not read yet.</div>}
+      {r && (
+        <dl className="facts read-facts mt">
+          <dt>Serial on sheet</dt><dd>{r.serialOnHappySheet ?? "—"}</dd>
+          <dt>Serial on building</dt><dd>{r.serialOnBuilding ?? "not visible"}</dd>
+          <dt>Customer</dt><dd>{r.customerName ?? "—"}{r.customerSigned ? " · signed" : r.customerSigned === false ? " · NOT signed" : ""}</dd>
+          <dt>Top line</dt><dd>{r.topLineRaw ?? "—"}</dd>
+          <dt>Lot</dt><dd>{r.topLineLot ?? "—"}</dd>
+          <dt>Date · driver</dt><dd>{[r.sheetDate, r.driverName].filter(Boolean).join(" · ") || "—"}</dd>
+        </dl>
+      )}
+      <ErrorText error={reread.error} />
+    </div>
   );
 }
