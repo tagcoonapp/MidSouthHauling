@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { importInstructions, type ImportRow } from "../../../shared/import";
 import { api } from "../api";
 import { ErrorText, JobTypePill } from "../components/bits";
-import { money } from "../util";
+import { money, addressLine } from "../util";
 
 type PreviewRow = ImportRow & { status: "new" | "exists" | "duplicate_in_list"; reason: string };
 interface ImportResult { rows: PreviewRow[]; bad: { entry: string; reason: string }[]; newCount?: number; added?: number; skipped?: number }
@@ -85,7 +85,7 @@ export function ImportPage() {
                   <tr key={i} style={{ opacity: r.status === "new" ? 1 : 0.5 }}>
                     <td>{r.status === "new" ? <span className="pill st-scheduled">New</span> : <span className="pill st-pipeline" title={r.reason}>{r.reason}</span>}</td>
                     <td><b>{r.customerName}</b></td>
-                    <td>{[r.address, r.city].filter(Boolean).join(", ") || <span className="muted">—</span>}</td>
+                    <td>{addressLine(r.address, r.city) || <span className="muted">—</span>}</td>
                     <td>{r.phone || <span className="muted">—</span>}</td>
                     <td>{r.serial || <span className="pill cs-attempted">No serial</span>}</td>
                     <td>{r.balanceCents === null ? <span className="muted">—</span> : money(r.balanceCents)}</td>

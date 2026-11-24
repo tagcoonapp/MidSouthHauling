@@ -30,8 +30,16 @@ export function money(cents: number | null): string {
 export const jobTypeLabel = (t: JobType) => JOB_TYPE_LABELS[t];
 export const callLabel = (s: CallStatus) => CALL_STATUS_LABELS[s];
 
+/** "670 Park Ave, Moody, AL 35004" — adds the city only when the address doesn't already include it. */
+export function addressLine(address: string, city: string): string {
+  const a = address.trim(), c = city.trim();
+  if (!c) return a;
+  if (!a) return c;
+  return a.toLowerCase().includes(c.toLowerCase()) ? a : `${a}, ${c}`;
+}
+
 export function mapsUrl(address: string, city: string): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([address, city].filter(Boolean).join(", "))}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressLine(address, city))}`;
 }
 
 /**

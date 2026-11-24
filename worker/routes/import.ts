@@ -48,9 +48,9 @@ importRoutes.post("/", async (c) => {
     order += 1;
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO jobs (id, customer_name, address, city, phone, serial, balance_cents, job_type, office_notes, sort_order, moody, source, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'netsuite', ?)`,
-      ).bind(id, r.customerName.slice(0, 160), r.address.slice(0, 500), r.city.slice(0, 80), r.phone.slice(0, 40), r.serial.slice(0, 60), r.balanceCents, r.jobType, r.notes.slice(0, 2000), order, importMoody(r) ? 1 : 0, user.id),
+        `INSERT INTO jobs (id, customer_name, address, city, phone, serial, balance_cents, job_type, office_notes, sort_order, moody, source, created_by, tlo_notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'netsuite', ?, ?)`,
+      ).bind(id, r.customerName.slice(0, 160), r.address.slice(0, 500), r.city.slice(0, 80), r.phone.slice(0, 40), r.serial.slice(0, 60), r.balanceCents, r.jobType, r.notes.slice(0, 2000), order, importMoody(r) ? 1 : 0, user.id, r.tlo.slice(0, 3000)),
       c.env.DB.prepare("INSERT INTO job_events (id, job_id, user_id, kind, detail) VALUES (?, ?, ?, 'created', ?)").bind(newId(), id, user.id, `Imported from NetSuite (${JOB_TYPE_LABELS[r.jobType]})`),
     );
   }

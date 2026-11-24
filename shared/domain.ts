@@ -77,6 +77,23 @@ export function lotFromName(name: string): string {
   return i === -1 ? "" : name.slice(i + 1).trim();
 }
 
+/** Lots that build on site: jobs from these lots are Shop Builds. */
+export const isShopBuildLot = (lot: string | null | undefined) => !!lot && /\b(mize|south\s*fulton|toccoa)\b/i.test(lot);
+
+export type MapCategory = "sale" | "shop_build" | "repo" | "private_move";
+/** Map pin color group: green New/Used, blue Shop Build (or a shop-build lot), red Repo/Attempted Repo, purple Private Move. */
+export function mapCategory(jobType: JobType, name: string): MapCategory {
+  if (jobType === "repo" || jobType === "attempted_repo") return "repo";
+  if (jobType === "private_move") return "private_move";
+  if (jobType === "shop_build" || isShopBuildLot(lotFromName(name))) return "shop_build";
+  return "sale";
+}
+
+/** Whole days since a job was added. */
+export function daysOnUs(createdAtIso: string, now = Date.now()): number {
+  return Math.max(0, Math.floor((now - Date.parse(createdAtIso)) / 86_400_000));
+}
+
 export const CALL_STATUSES = ["not_called", "attempted", "waiting", "confirmed"] as const;
 export type CallStatus = (typeof CALL_STATUSES)[number];
 
@@ -197,6 +214,8 @@ export interface DriverJob {
   collectedRef: string;
   /** Attempted repo: customer paid the full balance to keep the building. */
   keptPaidInFull: boolean | null;
+  /** Repos: other possible addresses from a TLO search, one per line. */
+  tloNotes: string;
 }
 
 export interface JobEvent {
@@ -219,6 +238,9 @@ export interface OfficeJob extends DriverJob {
   amountOverrideCents: number | null;
   photoRead: import("./photo-read").PhotoReadState;
   escortCents: number | null;
+  lat: number | null;
+  lng: number | null;
+  geoApprox: boolean;
   events?: JobEvent[];
   /** Live expense draft (submitted jobs, scheduler only). */
   draft?: import("./pricing").ExpenseDraft & { nameMatches: boolean | null; photoChecks: import("./photo-read").PhotoCheck[]; serialFromPhoto: boolean };

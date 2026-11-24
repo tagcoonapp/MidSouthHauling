@@ -3,7 +3,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import type { DriverJob, Me } from "../../../shared/domain";
 import { api } from "../api";
 import { CallPill, JobTypePill, StagePill } from "../components/bits";
-import { addDays, fmtDateTime, fmtDay, mapsUrl, weekStart } from "../util";
+import { addDays, fmtDateTime, fmtDay, mapsUrl, weekStart, addressLine } from "../util";
 
 type Tab = "today" | "week" | "log";
 
@@ -49,7 +49,7 @@ function JobCard({ job, me }: { job: DriverJob; me: Me }) {
       </div>
       {(job.address || job.city) ? (
         <a className="map-link big" href={mapsUrl(job.address, job.city)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-          📍 {[job.address, job.city].filter(Boolean).join(", ")}
+          📍 {addressLine(job.address, job.city)}
         </a>
       ) : <div className="muted small">No address</div>}
       <div className="row" style={{ marginTop: 10 }}>

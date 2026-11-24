@@ -44,6 +44,10 @@ export interface JobRow {
   collected_ref: string;
   escort_cents: number | null;
   kept_paid_in_full: number | null;
+  tlo_notes?: string;
+  lat?: number | null;
+  lng?: number | null;
+  geo_approx?: number;
 }
 
 export interface PhotoRow {
@@ -89,6 +93,7 @@ export function toDriverJob(r: JobRow, photos: PhotoRow[]): DriverJob {
     collectedMethod: isPaymentMethod(r.collected_method) ? r.collected_method : null,
     collectedRef: r.collected_ref ?? "",
     keptPaidInFull: r.kept_paid_in_full === null || r.kept_paid_in_full === undefined ? null : !!r.kept_paid_in_full,
+    tloNotes: r.tlo_notes ?? "",
   };
 }
 
@@ -105,5 +110,8 @@ export function toOfficeJob(r: JobRow, photos: PhotoRow[]): OfficeJob {
     amountOverrideCents: r.amount_override_cents,
     photoRead: photoReadOf(r),
     escortCents: r.escort_cents ?? null,
+    lat: r.lat ?? null,
+    lng: r.lng ?? null,
+    geoApprox: !!r.geo_approx,
   };
 }

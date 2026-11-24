@@ -118,6 +118,7 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
     onError: (e) => { if (e instanceof ApiError && e.status === 409) setConfirmProblems(true); },
   });
   const sendBack = useMutation({ mutationFn: () => api.post(`/jobs/${j.id}/send-back`, { reason }), onSuccess: refresh });
+  const remove = useMutation({ mutationFn: () => api.del(`/jobs/${j.id}`), onSuccess: refresh });
   const total = d.lines.reduce((t, l) => t + l.amountCents, 0);
   const date = j.scheduledDate ? fmtDay(j.scheduledDate, { month: "numeric", day: "numeric", year: "numeric" }) : "";
   const showMiles = j.jobType === "shop_build" || j.jobType === "repo" || j.jobType === "new" || j.jobType === "used";
@@ -228,6 +229,13 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
             <input placeholder="Reason, if sending back to the driver" value={reason} onChange={(e) => setReason(e.target.value)} style={{ flex: 1 }} />
             <button className="btn" onClick={() => sendBack.mutate()}>Send back</button>
           </div>
+          <div className="row-end mt">
+            <button className="btn danger small" disabled={remove.isPending}
+              onClick={() => confirm(`Delete ${j.customerName}'s job, photos and drafted expense? This can't be undone.`) && remove.mutate()}>
+              {remove.isPending ? "Deleting…" : "Delete job"}
+            </button>
+          </div>
+          <ErrorText error={remove.error} />
         </div>
       </div>
     </article>

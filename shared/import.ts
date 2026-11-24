@@ -1,5 +1,5 @@
 // Bulk import of jobs read from NetSuite (by Claude in Chrome, or pasted by hand).
-import { JOB_TYPES, type JobType } from "./domain";
+import { JOB_TYPES, isShopBuildLot, type JobType } from "./domain";
 import { isMoodyLot } from "./photo-read";
 
 export interface ImportRow {
@@ -12,6 +12,8 @@ export interface ImportRow {
   jobType: JobType;
   /** The lot the building is at / coming from (not used for repos). */
   lot: string;
+  /** Repos: other possible addresses from a TLO search, one per line. */
+  tlo: string;
   notes: string;
 }
 
@@ -70,14 +72,22 @@ function fromObject(o: Record<string, unknown>): ImportRow {
     balanceCents: parseMoney(balanceRaw),
     jobType: parseJobType(pick(o, "jobtype", "type")),
     lot: pick(o, "lot", "lotname", "saleslot", "location", "fromlot"),
+    tlo: tloText(Object.entries(o).find(([k]) => /tlo|otheraddress|alternateaddress|altaddress/i.test(k.replace(/[^a-z]/gi, "")))?.[1]),
     notes: pick(o, "notes", "note", "comments", "memo"),
   };
 }
 
 const IS_REPO = (t: JobType) => t === "repo" || t === "attempted_repo";
 
+function tloText(v: unknown): string {
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean).join("\n");
+  return typeof v === "string" ? v.trim() : "";
+}
+
 /** Non-repo jobs are named "Customer | Lot" so the lot shows everywhere the name does. */
 export function withLot(r: ImportRow): ImportRow {
+  // Mize, South Fulton and Toccoa GA are shop-build lots.
+  if (!IS_REPO(r.jobType) && isShopBuildLot(r.lot || (r.customerName.split("|")[1] ?? ""))) r = { ...r, jobType: "shop_build" };
   if (IS_REPO(r.jobType) || !r.lot.trim() || r.customerName.includes("|")) return r;
   return { ...r, customerName: `${r.customerName.trim()} | ${r.lot.trim()}` };
 }
@@ -127,6 +137,7 @@ export function parseImport(text: string): ParsedImport {
       balanceCents: parseMoney(parts[5]),
       jobType: parseJobType(parts[6]),
       lot: parts[7] ?? "",
+      tlo: "",
       notes: parts[8] ?? "",
     }));
   }
@@ -142,17 +153,22 @@ export function importInstructions(siteUrl: string): string {
 1. In my NetSuite tab (Employee Center), open the jobs list and show the jobs that are "In Progress". Do not change, submit or delete anything in NetSuite. Only read.
 2. For EVERY job in that list, collect:
    - customerName
-   - address (delivery street address)
+   - address: the FULL street address for the job (delivery address; for a repo, the customer's address), including
+     state and ZIP if shown, e.g. "670 Park Ave, Moody, AL 35004". This is required: open the job's record if the list
+     doesn't show it. Never leave the address blank when it exists anywhere on the job.
    - city
    - phone
    - serial (the Building Inventory Number, like ULB-305353-1016-092126)
    - balance (balance due in dollars; 0 if none)
    - jobType (one of: New, Used, Shop Build, Repo, Attempted Repo; use New if you can't tell)
    - lot (the lot the building is at or coming from, e.g. Moody or Henagar; leave blank for repos)
+   - tloAddresses (repos only): every other possible address for the customer from a TLO search or in the job's
+     notes, as a list like ["12 Oak St, Fort Payne, AL", "4 Pine Rd, Rainsville, AL"]. Leave it out if there are none.
    Put only the customer's name in customerName. The site adds the lot to the name itself.
    If the list doesn't show something, open that job's record to find it. If it truly isn't there, leave it blank.
 3. Open ${siteUrl}/import (I'm already signed in), paste everything into the big box as a JSON list, for example:
-   [{"customerName":"William Temples","address":"123 Main St","city":"Moody","phone":"(205) 555-0100","serial":"ULB-305353-1016-092126","balance":0,"jobType":"New","lot":"Moody"}]
+   [{"customerName":"William Temples","address":"670 Park Ave, Moody, AL 35004","city":"Moody","phone":"(205) 555-0100","serial":"ULB-305353-1016-092126","balance":0,"jobType":"New","lot":"Moody"},
+    {"customerName":"Rex Owens","address":"77 Pine Hollow Ln, Decatur, AL 35603","city":"Decatur","phone":"(256) 555-0142","serial":"UCC-34543-1232-090356","balance":940,"jobType":"Repo","tloAddresses":["12 Oak St, Hartselle, AL 35640"]}]
 4. Click "Preview", then click the "Add" button to add the new jobs. Jobs already on the site are skipped automatically.
 5. Tell me how many jobs were added and list any you couldn't read.`;
 }

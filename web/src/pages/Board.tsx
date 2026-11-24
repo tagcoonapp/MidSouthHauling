@@ -4,9 +4,11 @@ import { CALL_STATUSES, JOB_TYPES, type JobType, type Me, type OfficeJob, type T
 import { api } from "../api";
 import { CallPill, ErrorText, JobTypePill, Modal } from "../components/bits";
 import { JobDrawer } from "./JobDrawer";
+import { JobMap } from "../components/JobMap";
+import { CALL_STATUS_LABELS, daysOnUs, type CallStatus } from "../../../shared/domain";
 import { copyImportInstructions } from "./Import";
 import { useNavigate } from "react-router-dom";
-import { addDays, fmtDay, jobTypeLabel, mapsUrl, money, weekStart } from "../util";
+import { addDays, fmtDay, jobTypeLabel, mapsUrl, money, weekStart, addressLine } from "../util";
 
 interface BoardData {
   today: string;
@@ -28,6 +30,7 @@ export function Board({ me }: { me: Me }) {
   const [assign, setAssign] = useState<{ job: OfficeJob; date: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>(null);
+  const [menu, setMenu] = useState<{ job: OfficeJob; x: number; y: number } | null>(null);
   const navigate = useNavigate();
 
   const first = useQuery({ queryKey: ["board-today"], queryFn: () => api.get<BoardData>("/jobs/board"), staleTime: 300_000 });
@@ -123,18 +126,23 @@ export function Board({ me }: { me: Me }) {
           </div>
           {pipeline.length === 0 && <div className="muted small">No jobs waiting. New jobs land here.</div>}
           {pipeline.map((j) => (
-            <div key={j.id} className="card pc" draggable={canEdit} onDragStart={(e) => onDragStart(e, j)} onClick={() => setOpenId(j.id)}>
+            <div key={j.id} className="card pc" draggable={canEdit} onDragStart={(e) => onDragStart(e, j)} onClick={() => setOpenId(j.id)}
+              onContextMenu={(e) => { if (!canEdit) return; e.preventDefault(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }}>
               <div className="row"><b>{j.customerName}</b><JobTypePill type={j.jobType} /></div>
               <div className="muted">{[j.city, j.building].filter(Boolean).join(" · ")}</div>
               <div className="row" style={{ marginTop: 6 }}>
                 <span className="muted small">{j.serial ? `SN ${j.serial}` : ""}</span>
-                {j.balanceCents !== null && <b className={j.balanceCents ? "owes" : "paid"}>{j.balanceCents ? `Owes ${money(j.balanceCents)}` : "Paid"}</b>}
+                {j.balanceCents !== null && (j.balanceCents ? <b className="owes">Owes {money(j.balanceCents)}</b> : j.jobType !== "repo" && j.jobType !== "attempted_repo" ? <b className="paid">Paid</b> : null)}
               </div>
-              <div style={{ marginTop: 6 }}><CallPill status={j.callStatus} attempts={j.callAttempts} /></div>
+              <div className="row" style={{ marginTop: 6 }}>
+                <CallPill status={j.callStatus} attempts={j.callAttempts} />
+                <DaysBadge job={j} />
+              </div>
             </div>
           ))}
         </section>
 
+        <div className="right-col">
         <div className="cal">
           {days.map((d) => {
             const dayJobs = scheduled.filter((j) => j.scheduledDate === d);
@@ -149,13 +157,14 @@ export function Board({ me }: { me: Me }) {
                     draggable={canEdit && j.stage === "scheduled"}
                     onDragStart={(e) => onDragStart(e, j)}
                     onClick={() => setOpenId(j.id)}
+                    onContextMenu={(e) => { if (!canEdit || j.stage !== "scheduled") return; e.preventDefault(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }}
                     title={j.driverName ?? ""}
                   >
                     <b>{j.customerName}</b>
                     {jobTypeLabel(j.jobType)}{j.scheduledTime ? ` · ${j.scheduledTime}` : ""}
                     {(j.address || j.city) && (
                       <a className="map-link" href={mapsUrl(j.address, j.city)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} draggable={false}>
-                        📍 {[j.address, j.city].filter(Boolean).join(", ")}
+                        📍 {addressLine(j.address, j.city)}
                       </a>
                     )}
                     <div className="muted small">{j.driverName}</div>
@@ -163,15 +172,26 @@ export function Board({ me }: { me: Me }) {
                     <div style={{ marginTop: 4 }}>
                       {j.stage === "scheduled" ? <CallPill status={j.callStatus} attempts={j.callAttempts} /> : <span className={`pill st-${j.stage}`}>{j.stage === "submitted" ? "Submitted" : "Approved"}</span>}
                     </div>
+                    {j.stage === "scheduled" && <DaysBadge job={j} />}
                   </div>
                 ))}
               </section>
             );
           })}
         </div>
+        <JobMap jobs={pipeline} onOpen={setOpenId} />
+        </div>
       </div>
 
       {openId && <JobDrawer id={openId} me={me} drivers={drivers} onClose={() => setOpenId(null)} />}
+      {menu && (
+        <StatusMenu
+          {...menu}
+          onClose={() => setMenu(null)}
+          onOpen={() => { setOpenId(menu.job.id); setMenu(null); }}
+          onPick={(s) => { move.mutate({ id: menu.job.id, body: { callStatus: s } }); setMenu(null); }}
+        />
+      )}
       {adding && <NewJobModal onClose={() => setAdding(false)} />}
       {assign && (
         <AssignModal
@@ -219,7 +239,7 @@ function AssignModal({ job, date, drivers, onClose, onSave }: {
 function NewJobModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   // Private moves are the most common manual entry (they aren't in NetSuite), so the form starts there.
-  const [f, setF] = useState({ customerName: "", phone: "", address: "", city: "", serial: "", building: "", balance: "", jobType: "private_move" as JobType, officeNotes: "" });
+  const [f, setF] = useState({ customerName: "", phone: "", address: "", city: "", serial: "", building: "", balance: "", jobType: "private_move" as JobType, officeNotes: "", tloNotes: "" });
   const isPrivate = f.jobType === "private_move";
   const [err, setErr] = useState<unknown>(null);
   const [dupe, setDupe] = useState(false);
@@ -249,6 +269,9 @@ function NewJobModal({ onClose }: { onClose: () => void }) {
         <label>Building (size / style)<input value={f.building} onChange={set("building")} placeholder="12x24 Side Lofted" /></label>
         {!isPrivate && <label>Balance owed ($, 0 = paid)<input value={f.balance} onChange={set("balance")} inputMode="decimal" /></label>}
         <label className="span2">Notes for the driver<textarea rows={2} value={f.officeNotes} onChange={set("officeNotes")} /></label>
+        {(f.jobType === "repo" || f.jobType === "attempted_repo") && (
+          <label className="span2">TLO addresses (one per line)<textarea rows={3} value={f.tloNotes} onChange={set("tloNotes")} placeholder={"12 Oak St, Hartselle, AL\n4 Pine Rd, Rainsville, AL"} /></label>
+        )}
         <div className="span2">
           <ErrorText error={err} />
           <div className="row-end">
@@ -262,3 +285,29 @@ function NewJobModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+
+function DaysBadge({ job }: { job: OfficeJob }) {
+  const d = daysOnUs(job.createdAt);
+  return <span className={`days${d >= 14 ? " old" : d >= 7 ? " aging" : ""}`} title="Days since this job was added">{d === 0 ? "Today" : `${d} day${d === 1 ? "" : "s"}`}</span>;
+}
+
+/** Right-click menu on a job: set the call status in one click. */
+function StatusMenu({ job, x, y, onClose, onPick, onOpen }: { job: OfficeJob; x: number; y: number; onClose: () => void; onPick: (s: CallStatus) => void; onOpen: () => void }) {
+  const left = Math.min(x, window.innerWidth - 220);
+  const top = Math.min(y, window.innerHeight - 230);
+  return (
+    <div className="ctx-bg" onMouseDown={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }}>
+      <div className="ctx-menu card" style={{ left, top }} onMouseDown={(e) => e.stopPropagation()} role="menu">
+        <div className="ctx-title">{job.customerName}</div>
+        {(Object.keys(CALL_STATUS_LABELS) as CallStatus[]).map((s) => (
+          <button key={s} role="menuitem" className={job.callStatus === s ? "on" : ""} onClick={() => onPick(s)}>
+            <span className={`pill cs-${s}`}><i className="dot" />{s === "attempted" ? "Log attempted call" : CALL_STATUS_LABELS[s]}</span>
+            {job.callStatus === s && s !== "attempted" && <span className="muted small">current</span>}
+          </button>
+        ))}
+        <div className="ctx-sep" />
+        <button role="menuitem" onClick={onOpen}>Open details…</button>
+      </div>
+    </div>
+  );
+}

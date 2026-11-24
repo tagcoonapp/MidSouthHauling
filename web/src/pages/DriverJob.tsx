@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { DRIVER_QUESTIONS, JOB_TYPES, PAYMENT_LABELS, PAYMENT_METHODS, missingDriverAnswers, type DriverJob, type JobType, type PaymentMethod } from "../../../shared/domain";
 import { api } from "../api";
 import { ErrorText, PhotoGrid, StagePill } from "../components/bits";
-import { fmtDay, jobTypeLabel, mapsUrl } from "../util";
+import { fmtDay, jobTypeLabel, mapsUrl, addressLine } from "../util";
 
 type WorkBody = { jobType?: JobType; driverNotes?: string; reportedCustomerName?: string; miles?: number | null; lotTakenTo?: string; collected?: string | null; collectedMethod?: PaymentMethod | null; collectedRef?: string; keptPaidInFull?: boolean };
 const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -77,7 +77,7 @@ export function DriverJobPage() {
         <Link to="/" className="muted-light small">‹ Back</Link>
         {"balanceCents" in job && <div className="office-note">You're filling in the driver's steps for this job.</div>}
         <h1 style={{ marginTop: 6 }}>{job.customerName}</h1>
-        <div className="muted-light small" style={{ marginTop: 2 }}>{[job.address, job.city].filter(Boolean).join(", ")}</div>
+        <div className="muted-light small" style={{ marginTop: 2 }}>{addressLine(job.address, job.city)}</div>
         <div className="row-wrap" style={{ marginTop: 12 }}>
           {tel && <a className="btn ghost-light" href={`tel:${tel}`}>📞 Call</a>}
           {(job.address || job.city) && <a className="btn ghost-light" href={mapsUrl(job.address, job.city)} target="_blank" rel="noreferrer">🧭 Directions</a>}
@@ -94,6 +94,14 @@ export function DriverJobPage() {
           <dt>Status</dt><dd><StagePill stage={job.stage} /></dd>
         </dl>
         {job.officeNotes && <div className="note-box"><b>From the office:</b> {job.officeNotes}</div>}
+        {job.tloNotes.trim() && (
+          <div className="note-box tlo">
+            <b>Other addresses (TLO):</b>
+            {job.tloNotes.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l, i) => (
+              <a key={i} className="map-link big" href={mapsUrl(l, "")} target="_blank" rel="noreferrer">📍 {l}</a>
+            ))}
+          </div>
+        )}
       </div>
 
       {job.collectCents !== null && (

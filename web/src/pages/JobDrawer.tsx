@@ -128,6 +128,7 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
                   </select>
                 </label>
                 {field("officeNotes", "Notes for the driver", { area: true })}
+                {(job.jobType === "repo" || job.jobType === "attempted_repo") && field("tloNotes", "TLO addresses (one per line; the driver sees these)", { area: true })}
               </div>
               <div className="row-wrap mt">
                 {job.hasPdf && <a className="btn small" href={`/api/jobs/${job.id}/pdf`} target="_blank" rel="noreferrer">📄 View customer PDF</a>}

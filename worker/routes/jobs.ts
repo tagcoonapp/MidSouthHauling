@@ -19,6 +19,7 @@ import {
 } from "../../shared/domain";
 import { draftForJob, loadPricing } from "../pricing-store";
 import { readJobPhotos } from "../photo-reader";
+import { geocodePending } from "../geocode";
 import { newId, requirePermission } from "../auth";
 import { addDays, isIsoDate, localToday } from "../dates";
 import type { AppEnv, SessionUser } from "../env";
@@ -141,6 +142,8 @@ jobRoutes.get("/board", requirePermission("viewPipeline"), async (c) => {
       .all<JobRow>(),
   ]);
   const all = [...pipeline.results, ...scheduled.results];
+  // Put any new addresses on the map in the background (free geocoders, cached per job).
+  if (all.some((j) => (j as { geo_status?: string }).geo_status === "none")) c.executionCtx.waitUntil(geocodePending(c.env).catch(() => {}));
   const photos = await photosForJobs(c.env.DB, all.map((j) => j.id));
   return c.json({
     today,
@@ -171,12 +174,13 @@ jobRoutes.post("/", requirePermission("editSchedule"), async (c) => {
   const id = newId();
   const maxOrder = await c.env.DB.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM jobs WHERE stage = 'pipeline'").first<{ m: number }>();
   await c.env.DB.prepare(
-    `INSERT INTO jobs (id, customer_name, address, city, phone, serial, building, balance_cents, job_type, office_notes, sort_order, source, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO jobs (id, customer_name, address, city, phone, serial, building, balance_cents, job_type, office_notes, sort_order, source, created_by, tlo_notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id, customerName, str(b.address) ?? "", str(b.city, 80) ?? "", str(b.phone, 40) ?? "", serial, str(b.building, 120) ?? "",
       balance ?? null, b.jobType, str(b.officeNotes, 2000) ?? "", (maxOrder?.m ?? 0) + 1, str(b.source, 30) || "manual", user.id,
+      str(b.tloNotes, 3000) ?? "",
     )
     .run();
   await logEvent(c.env.DB, id, user.id, "created", `Added to pipeline (${JOB_TYPE_LABELS[b.jobType as keyof typeof JOB_TYPE_LABELS]})`);
@@ -196,12 +200,16 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
   for (const [key, col, max] of [
     ["customerName", "customer_name", 120], ["address", "address", 500], ["city", "city", 80], ["phone", "phone", 40],
     ["serial", "serial", 60], ["building", "building", 120], ["officeNotes", "office_notes", 2000], ["scheduledTime", "scheduled_time", 20],
+    ["tloNotes", "tlo_notes", 3000],
   ] as const) {
     const v = str(b[key], max);
     if (v !== undefined) {
       if (key === "customerName" && !v) return c.json({ error: "Customer name can't be empty." }, 400);
       set(col, v);
     }
+  }
+  if ((str(b.address) !== undefined && str(b.address) !== job.address) || (str(b.city, 80) !== undefined && str(b.city, 80) !== job.city)) {
+    sets.push("geo_status = 'none'", "lat = NULL", "lng = NULL");
   }
   if (b.balance !== undefined) {
     const bal = parseBalance(b.balance);
@@ -297,7 +305,8 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
 jobRoutes.delete("/:id", requirePermission("editSchedule"), async (c) => {
   const job = await getJob(c.env.DB, c.req.param("id"));
   if (!job) return c.json({ error: "Job not found." }, 404);
-  if (job.stage === "submitted" || job.stage === "approved") return c.json({ error: "Finished jobs can't be deleted." }, 400);
+  if (job.stage === "approved") return c.json({ error: "Approved jobs can't be deleted." }, 400);
+  if (job.stage === "submitted" && !permissionsFor(c.get("user").role).approveExpenses) return c.json({ error: "Only the scheduler can delete pending jobs." }, 403);
   const { results } = await c.env.DB.prepare("SELECT r2_key FROM job_photos WHERE job_id = ?").bind(job.id).all<{ r2_key: string }>();
   const keys = results.map((r) => r.r2_key);
   if (job.pdf_key) keys.push(job.pdf_key);

@@ -19,6 +19,19 @@ describe("lot after the name", () => {
   });
 });
 
+describe("TLO addresses", () => {
+  it("reads a repo's TLO addresses as one per line", () => {
+    const { rows } = parseImport(JSON.stringify([{ customerName: "Rex", jobType: "Repo", address: "1 A St, Decatur, AL", tloAddresses: ["12 Oak St, Hartselle, AL", " 4 Pine Rd "] }]));
+    expect(rows[0]!.tlo).toBe("12 Oak St, Hartselle, AL\n4 Pine Rd");
+    expect(rows[0]!.address).toBe("1 A St, Decatur, AL");
+  });
+  it("instructions require the full address and ask for TLO addresses on repos", () => {
+    const t = importInstructions("https://x.test");
+    expect(t).toMatch(/FULL street address/);
+    expect(t).toMatch(/tloAddresses \(repos only\)/);
+  });
+});
+
 describe("NetSuite import parsing", () => {
   it("reads the JSON list Claude in Chrome pastes, with loose keys and money", () => {
     const { rows, bad } = parseImport(`Here you go:
