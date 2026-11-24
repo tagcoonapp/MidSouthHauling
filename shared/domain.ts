@@ -10,13 +10,14 @@ export const ROLE_LABELS: Record<Role, string> = {
 };
 
 // The 5 pay types. Drivers pick one when they finish a job; it decides how the expense is priced.
-export const JOB_TYPES = ["new", "used", "shop_build", "repo", "attempted_repo", "private_move"] as const;
+export const JOB_TYPES = ["new", "used", "shop_build", "inv_haul", "repo", "attempted_repo", "private_move"] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
 export const JOB_TYPE_LABELS: Record<JobType, string> = {
   new: "New",
   used: "Used",
   shop_build: "Shop Build",
+  inv_haul: "INV Haul",
   repo: "Repo",
   attempted_repo: "Attempted Repo",
   private_move: "Private Move",
@@ -27,6 +28,7 @@ export const DRIVER_QUESTIONS: Record<JobType, { miles: boolean; lot: boolean; a
   new: { miles: true, lot: false, amountGiven: false, keptPaid: false },
   used: { miles: true, lot: false, amountGiven: false, keptPaid: false },
   shop_build: { miles: true, lot: false, amountGiven: false, keptPaid: false },
+  inv_haul: { miles: true, lot: false, amountGiven: false, keptPaid: false },
   repo: { miles: true, lot: true, amountGiven: false, keptPaid: false },
   attempted_repo: { miles: false, lot: false, amountGiven: false, keptPaid: true },
   private_move: { miles: false, lot: false, amountGiven: true, keptPaid: false },
@@ -55,7 +57,8 @@ export function missingDriverAnswers(j: {
 }): string[] {
   const q = DRIVER_QUESTIONS[j.jobType];
   const out: string[] = [];
-  if (!j.reportedCustomerName.trim()) out.push("customer name");
+  // Inventory hauls (lot to lot) may have no customer.
+  if (!j.reportedCustomerName.trim() && j.jobType !== "inv_haul") out.push("customer name");
   if (q.miles && (j.miles === null || !(j.miles >= 0))) out.push("miles");
   if (q.lot && !j.lotTakenTo.trim()) out.push("lot taken to");
   if (q.amountGiven && (j.collectedCents === null || j.collectedCents < 0)) out.push("how much was given");

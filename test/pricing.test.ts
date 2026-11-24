@@ -91,6 +91,24 @@ describe("expense rules", () => {
   });
 });
 
+describe("INV HAUL", () => {
+  it("pays 5/6/7% of list price by miles, and asks past 150", () => {
+    const inv = (miles: number | null) => draft({ jobType: "inv_haul", miles, customerName: "" });
+    expect([10, 50, 50.5, 100, 101, 150].map((m) => inv(m).lines[0]!.amountCents)).toEqual([48475, 48475, 58170, 58170, 67865, 67865]);
+    expect(inv(151).lines).toEqual([]);
+    expect(inv(151).problems[0]).toContain("over 150 miles");
+    expect(inv(null).problems).toContain("Miles are missing.");
+    expect(inv(20).lines[0]!.description.startsWith("INV HAUL")).toBe(true);
+  });
+  it("drivers don't need a customer name for an INV Haul, but do need miles", async () => {
+    const { missingDriverAnswers } = await import("../shared/domain");
+    const base = { reportedCustomerName: "", lotTakenTo: "", collectCents: null, collectedCents: null, collectedMethod: null };
+    expect(missingDriverAnswers({ ...base, jobType: "inv_haul", miles: null })).toEqual(["miles"]);
+    expect(missingDriverAnswers({ ...base, jobType: "inv_haul", miles: 12 })).toEqual([]);
+    expect(missingDriverAnswers({ ...base, jobType: "used", miles: 12 })).toEqual(["customer name"]);
+  });
+});
+
 describe("private move", () => {
   it("is recorded only: no expense, no serial needed", () => {
     const d = draft({ jobType: "private_move", serial: "" });

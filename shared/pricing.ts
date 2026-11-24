@@ -66,7 +66,15 @@ export const PERCENT_RULES = {
   used: 5,
   shopBuildBase: 10,
   shopBuildStepMiles: 50,
+  /** INV HAUL: 5% for 0–50 mi, 6% for 50–100, 7% for 100–150; nothing set past 150. */
+  invHaulTiers: [[50, 5], [100, 6], [150, 7]] as const,
 } as const;
+
+/** INV HAUL percent for these miles, or null past the last tier (scheduler types an amount). */
+export function invHaulPercent(miles: number): number | null {
+  for (const [upTo, pct] of PERCENT_RULES.invHaulTiers) if (miles <= upTo) return pct;
+  return null;
+}
 
 /** 0–50 mi = 10%, 50.01–100 = 11%, 100.01–150 = 12% … (exactly 50 stays in the lower tier). */
 export function shopBuildPercent(miles: number): number {
@@ -113,7 +121,7 @@ export interface ExpenseDraft {
 const usd = (cents: number) => (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const pctOf = (cents: number, pct: number) => Math.round((cents * pct) / 100);
 const TYPE_WORD: Record<JobType, string> = {
-  new: "NEW", used: "USED", shop_build: "SHOP BUILD", repo: "REPO", attempted_repo: "ATTEMPTED REPO", private_move: "PRIVATE MOVE",
+  new: "NEW", used: "USED", shop_build: "SHOP BUILD", inv_haul: "INV HAUL", repo: "REPO", attempted_repo: "ATTEMPTED REPO", private_move: "PRIVATE MOVE",
 };
 
 export function draftExpenses(input: ExpenseInput, prices: PriceRow[], repoRates: RepoRate[], settings: PricingSettings): ExpenseDraft {
@@ -121,8 +129,8 @@ export function draftExpenses(input: ExpenseInput, prices: PriceRow[], repoRates
   const lines: ExpenseLine[] = [];
   const name = input.customerName.trim().toUpperCase();
   const serialInfo = parseSerial(input.serial);
-  const needsPrice = input.jobType === "new" || input.jobType === "used" || input.jobType === "shop_build";
-  const needsMiles = input.jobType === "shop_build" || input.jobType === "repo" || (input.jobType === "new" && input.moody);
+  const needsPrice = input.jobType === "new" || input.jobType === "used" || input.jobType === "shop_build" || input.jobType === "inv_haul";
+  const needsMiles = input.jobType === "shop_build" || input.jobType === "inv_haul" || input.jobType === "repo" || (input.jobType === "new" && input.moody);
 
   const needsSerial = input.jobType !== "attempted_repo" && input.jobType !== "private_move";
   if (!input.serial.trim() && needsSerial) problems.push("No serial number on this job.");
@@ -165,6 +173,18 @@ export function draftExpenses(input: ExpenseInput, prices: PriceRow[], repoRates
         description: memo(`${input.miles} mi`),
         amountCents: pctOf(listPriceCents, pct),
         basis: `${pct}% of ${usd(listPriceCents)} (${building} list price) for ${input.miles} miles`,
+      });
+      break;
+    }
+    case "inv_haul": {
+      if (listPriceCents === null || input.miles === null) break;
+      const pct = invHaulPercent(input.miles);
+      if (pct === null) { problems.push(`No INV HAUL rate over 150 miles (${input.miles} mi). Type a custom amount.`); break; }
+      lines.push({
+        kind: "main",
+        description: memo(`${input.miles} mi`),
+        amountCents: pctOf(listPriceCents, pct),
+        basis: `INV HAUL: ${pct}% of ${usd(listPriceCents)} (${building} list price) for ${input.miles} miles`,
       });
       break;
     }

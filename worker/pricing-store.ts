@@ -73,7 +73,10 @@ export function draftForJob(job: JobRow, pricing: PricingData) {
       })
     : [];
   // Serial or type mismatches block a one-click approve; softer notes (hard to read, comments) are shown but don't.
-  for (const c of photoChecks) if (!c.ok && /doesn't match|says .* but the job|No happy sheet|Couldn't read a serial|miles; driver entered/.test(c.text)) draft.problems.push(`Photos: ${c.text}`);
+  const blocking = job.job_type === "inv_haul"
+    ? /doesn't match|says .* but the job|Couldn't read a serial|miles; driver entered/ // inventory hauls may have no happy sheet
+    : /doesn't match|says .* but the job|No happy sheet|Couldn't read a serial|miles; driver entered/;
+  for (const c of photoChecks) if (!c.ok && blocking.test(c.text)) draft.problems.push(`Photos: ${c.text}`);
   const due = amountToCollect(job.job_type as JobType, job.balance_cents);
   if (due !== null && job.collected_cents !== null && job.collected_cents < due) {
     draft.problems.push(`Collected $${(job.collected_cents / 100).toFixed(2)} of $${(due / 100).toFixed(2)} due.`);

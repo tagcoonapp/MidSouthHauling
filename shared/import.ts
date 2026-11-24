@@ -27,6 +27,7 @@ const TYPE_WORDS: [RegExp, JobType][] = [
   [/attempt/i, "attempted_repo"],
   [/repo|reposs/i, "repo"],
   [/shop/i, "shop_build"],
+  [/\binv\b|inventory/i, "inv_haul"],
   [/private/i, "private_move"],
   [/used|customer purchase|resale/i, "used"],
   [/new|delivery|off.?lot|order/i, "new"],
@@ -160,7 +161,7 @@ export function importInstructions(siteUrl: string): string {
    - phone
    - serial (the Building Inventory Number, like ULB-305353-1016-092126)
    - balance (balance due in dollars; 0 if none)
-   - jobType (one of: New, Used, Shop Build, Repo, Attempted Repo; use New if you can't tell)
+   - jobType (one of: New, Used, Shop Build, INV Haul, Repo, Attempted Repo; use New if you can't tell)
    - lot (the lot the building is at or coming from, e.g. Moody or Henagar; leave blank for repos)
    - tloAddresses (repos only): every other possible address for the customer from a TLO search or in the job's
      notes, as a list like ["12 Oak St, Fort Payne, AL", "4 Pine Rd, Rainsville, AL"]. Leave it out if there are none.

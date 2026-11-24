@@ -39,6 +39,7 @@ function Rules({ data, onSaved }: { data: PricingData; onSaved: (d: PricingData)
         <li><b>New:</b> {PERCENT_RULES.new}% of list price (from the Moody lot: same as Shop Build, by miles)</li>
         <li><b>Used:</b> {PERCENT_RULES.used}% of list price</li>
         <li><b>Shop Build:</b> {PERCENT_RULES.shopBuildBase}% for 0–50 mi, +1% for every 50 mi after (50.1–100 = 11%, 100.1–150 = 12% …)</li>
+        <li><b>INV Haul:</b> 5% for 0–50 mi, 6% for 50–100, 7% for 100–150 (over 150: type an amount)</li>
         <li><b>Repo:</b> by building width and miles (table →). 14' and 16' wide: % of list price + escort fees</li>
         <li><b>Attempted Repo:</b> flat amount below, or the higher amount if the customer paid in full to keep the building</li>
         <li><b>Private Move:</b> recorded only, never expensed</li>

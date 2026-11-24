@@ -31,6 +31,7 @@ export function Board({ me }: { me: Me }) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [menu, setMenu] = useState<{ job: OfficeJob; x: number; y: number } | null>(null);
+  const [search, setSearch] = useState("");
   const navigate = useNavigate();
 
   const first = useQuery({ queryKey: ["board-today"], queryFn: () => api.get<BoardData>("/jobs/board"), staleTime: 300_000 });
@@ -53,7 +54,8 @@ export function Board({ me }: { me: Me }) {
   });
 
   if (!board.data || !from) return <div className="muted">Loading…</div>;
-  const { pipeline, scheduled, today } = board.data;
+  const { pipeline: allPipeline, scheduled, today } = board.data;
+  const pipeline = search.trim() ? allPipeline.filter((j) => matchesSearch(j, search)) : allPipeline;
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
   const all = [...pipeline, ...scheduled];
 
@@ -63,8 +65,11 @@ export function Board({ me }: { me: Me }) {
   }
   function dropOn(e: DragEvent, target: string) {
     e.preventDefault();
+    placeJob(e.dataTransfer.getData("text/job-id"), target);
+  }
+  /** Drop a job on "pipeline" or a day (YYYY-MM-DD). Used by card drags and map-pin drags. */
+  function placeJob(id: string, target: string) {
     setDropTarget(null);
-    const id = e.dataTransfer.getData("text/job-id");
     const job = all.find((j) => j.id === id);
     if (!job || !canEdit) return;
     setErr(null);
@@ -110,7 +115,7 @@ export function Board({ me }: { me: Me }) {
       <div className="board">
         <section className={`pipe${dropTarget === "pipeline" ? " drop" : ""}`} {...dropProps("pipeline")}>
           <div className="row" style={{ marginBottom: 10 }}>
-            <h2>Pipeline <span className="muted">({pipeline.length})</span></h2>
+            <h2>Pipeline <span className="muted">({search.trim() ? `${pipeline.length} of ${allPipeline.length}` : allPipeline.length})</span></h2>
             {canEdit && (
               <div className="row-wrap" style={{ gap: 6 }}>
                 <button
@@ -124,7 +129,10 @@ export function Board({ me }: { me: Me }) {
               </div>
             )}
           </div>
-          {pipeline.length === 0 && <div className="muted small">No jobs waiting. New jobs land here.</div>}
+          <div className="pipe-search">
+            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, address, phone, serial, lot" aria-label="Search the pipeline" />
+          </div>
+          {pipeline.length === 0 && <div className="muted small">{search.trim() ? "No jobs match that search." : "No jobs waiting. New jobs land here."}</div>}
           {pipeline.map((j) => (
             <div key={j.id} className="card pc" draggable={canEdit} onDragStart={(e) => onDragStart(e, j)} onClick={() => setOpenId(j.id)}
               onContextMenu={(e) => { if (!canEdit) return; e.preventDefault(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }}>
@@ -147,7 +155,7 @@ export function Board({ me }: { me: Me }) {
           {days.map((d) => {
             const dayJobs = scheduled.filter((j) => j.scheduledDate === d);
             return (
-              <section key={d} className={`day${d === today ? " today" : ""}${dropTarget === d ? " drop" : ""}`} {...dropProps(d)}>
+              <section key={d} data-drop={d} className={`day${d === today ? " today" : ""}${dropTarget === d ? " drop" : ""}`} {...dropProps(d)}>
                 <h3>{fmtDay(d, { weekday: "short", day: "numeric" }).toUpperCase()} <span>{dayJobs.length}</span></h3>
                 {dayJobs.map((j) => (
                   <div
@@ -179,7 +187,7 @@ export function Board({ me }: { me: Me }) {
             );
           })}
         </div>
-        <JobMap jobs={pipeline} onOpen={setOpenId} />
+        <JobMap jobs={pipeline} onOpen={setOpenId} onPinDrop={canEdit ? placeJob : undefined} onPinHover={setDropTarget} />
         </div>
       </div>
 
@@ -310,4 +318,16 @@ function StatusMenu({ job, x, y, onClose, onPick, onOpen }: { job: OfficeJob; x:
       </div>
     </div>
   );
+}
+
+/** Pipeline search: name (which carries the lot), address, city, phone (digits only) and serial. */
+export function matchesSearch(j: OfficeJob, q: string): boolean {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = [j.customerName, j.address, j.city, j.serial, j.building, j.tloNotes].join(" ").toLowerCase();
+  const digits = j.phone.replace(/\D/g, "");
+  return words.every((w) => {
+    if (text.includes(w)) return true;
+    const wd = w.replace(/\D/g, "");
+    return wd.length >= 3 && (digits.includes(wd) || j.serial.replace(/\D/g, "").includes(wd));
+  });
 }

@@ -2,7 +2,8 @@ import { STATIC_ASSETS } from "./static-assets.generated";
 
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
-  "referrer-policy": "same-origin",
+  // Cross-site requests send only our origin (OpenStreetMap tiles require a Referer); paths and queries never leave the site.
+  "referrer-policy": "strict-origin-when-cross-origin",
   "x-frame-options": "DENY",
 };
 

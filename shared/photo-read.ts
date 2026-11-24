@@ -10,7 +10,7 @@ export const PhotoReadSchema = z.object({
   customerName: z.string().nullable().describe("The customer name written on the happy sheet's name line."),
   topLineRaw: z.string().nullable().describe("The handwritten note across the top of the happy sheet, exactly as written, e.g. 'Henagar - Rory - used - 10miles'."),
   topLineLot: z.string().nullable().describe("First part of the top note: the lot the building came from, e.g. Henagar or Moody."),
-  topLineJobType: z.enum(["new", "used", "shop_build", "repo", "attempted_repo", "private_move"]).nullable().describe("Job type written in the top note, if any."),
+  topLineJobType: z.enum(["new", "used", "shop_build", "inv_haul", "repo", "attempted_repo", "private_move"]).nullable().describe("Job type written in the top note, if any."),
   topLineMiles: z.number().nullable().describe("Miles written in the top note, if any."),
   balanceDueOnSheet: z.string().nullable().describe("What is written in 'Balance Due Today', as written (e.g. '$3085.43' or 'NDB')."),
   noBalanceDue: z.boolean().nullable().describe("True if the sheet says no balance is due (NDB, none, $0, paid)."),
@@ -33,7 +33,7 @@ export interface PhotoReadState {
 }
 
 export const PHOTO_READ_SYSTEM = `You read photos from a shed-hauling company's completed jobs. Drivers photograph:
-- the "happy sheet": a Premier Portable Buildings form the customer signs. It has a "Building Inventory Number" (the serial, like ULBC-266321-1024-060323), the customer name line, signature, date, balance due, and the driver's name. Drivers usually handwrite a note across the top in the form "LOT - CUSTOMER LAST NAME - TYPE - MILES", e.g. "Moody - Temples - New - 114" or "Henagar - Rory - used - 10miles". The miles may be a bare number. TYPE is one of new, used, shop build, repo, attempted repo, private move. In "Balance Due Today", "NDB" means no balance due.
+- the "happy sheet": a Premier Portable Buildings form the customer signs. It has a "Building Inventory Number" (the serial, like ULBC-266321-1024-060323), the customer name line, signature, date, balance due, and the driver's name. Drivers usually handwrite a note across the top in the form "LOT - CUSTOMER LAST NAME - TYPE - MILES", e.g. "Moody - Temples - New - 114" or "Henagar - Rory - used - 10miles". The miles may be a bare number. TYPE is one of new, used, shop build, inv haul (inventory haul), repo, attempted repo, private move. In "Balance Due Today", "NDB" means no balance due.
 - the serial plate inside the building, or the serial written in pencil on the framing when the plate is missing.
 - the building itself.
 Copy serial numbers and names exactly as written, character for character. Do not guess: use null when something isn't visible, and say what was hard to read in "unclear". Ignore payment details.`;
