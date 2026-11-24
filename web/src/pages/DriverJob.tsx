@@ -75,6 +75,7 @@ export function DriverJobPage() {
     <div className="phone-app">
       <header className="ptop">
         <Link to="/" className="muted-light small">‹ Back</Link>
+        {"balanceCents" in job && <div className="office-note">You're filling in the driver's steps for this job.</div>}
         <h1 style={{ marginTop: 6 }}>{job.customerName}</h1>
         <div className="muted-light small" style={{ marginTop: 2 }}>{[job.address, job.city].filter(Boolean).join(", ")}</div>
         <div className="row-wrap" style={{ marginTop: 12 }}>

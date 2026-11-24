@@ -62,6 +62,7 @@ export function App() {
         <Route path="/completed" element={<Completed />} />
         {user.permissions.approveExpenses && <Route path="/pricing" element={<Pricing />} />}
         {user.permissions.manageTeam && <Route path="/team" element={<Team me={user} />} />}
+        {user.permissions.submitJobs && <Route path="/job/:id" element={<DriverJobPage />} />}
         <Route path="/account" element={<Account me={user} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

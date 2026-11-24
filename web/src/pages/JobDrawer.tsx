@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CALL_STATUSES, JOB_TYPES, type CallStatus, type JobType, type Me, type OfficeJob, type TeamMember } from "../../../shared/domain";
 import { api } from "../api";
@@ -137,7 +138,13 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
 
             {(job.stage !== "pipeline" || job.photos.length > 0) && (
               <section className="drawer-sec">
-                <h3>Driver photos & notes</h3>
+                <div className="row">
+                  <h3 style={{ margin: 0 }}>Driver photos & notes</h3>
+                  {me.role === "scheduler" && job.stage === "scheduled" && (
+                    <Link className="btn small pri" to={`/job/${job.id}`}>Fill in driver steps</Link>
+                  )}
+                </div>
+                <div style={{ height: 10 }} />
                 <PhotoGrid
                   photos={job.photos}
                   editable={me.role === "scheduler" && (job.stage === "scheduled" || job.stage === "submitted")}
