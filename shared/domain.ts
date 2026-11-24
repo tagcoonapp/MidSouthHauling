@@ -236,6 +236,8 @@ export interface OfficeJob extends DriverJob {
   driverName: string | null;
   driverColor: string | null;
   callAttempts: number;
+  /** Order within the day (lower first); drivers see their stops in this order. */
+  sortOrder: number;
   createdAt: string;
   moody: boolean;
   amountOverrideCents: number | null;

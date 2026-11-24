@@ -20,6 +20,7 @@ export interface JobRow {
   stage: string;
   call_status: string;
   call_attempts: number;
+  sort_order?: number;
   driver_id: string | null;
   driver_name?: string | null;
   driver_color?: string | null;
@@ -105,6 +106,7 @@ export function toOfficeJob(r: JobRow, photos: PhotoRow[]): OfficeJob {
     driverName: r.driver_name ?? null,
     driverColor: r.driver_color ?? null,
     callAttempts: r.call_attempts,
+    sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
     moody: !!r.moody,
     amountOverrideCents: r.amount_override_cents,

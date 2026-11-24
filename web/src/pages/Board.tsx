@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from "react";
+import { Fragment, useRef, useState, type DragEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CALL_STATUSES, JOB_TYPES, type JobType, type Me, type OfficeJob, type TeamMember } from "../../../shared/domain";
 import { api } from "../api";
@@ -27,11 +27,14 @@ export function Board({ me }: { me: Me }) {
   const [anchor, setAnchor] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [assign, setAssign] = useState<{ job: OfficeJob; date: string } | null>(null);
+  const [assign, setAssign] = useState<{ job: OfficeJob; date: string; sortOrder?: number; renumber?: () => void } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [menu, setMenu] = useState<{ job: OfficeJob; x: number; y: number } | null>(null);
   const [search, setSearch] = useState("");
+  const [dropAt, setDropAt] = useState<{ day: string; index: number } | null>(null);
+  // Day the dragged card came from: only drags within the same day reorder; anything else goes to the end (order placed).
+  const dragFromDay = useRef<string | null>(null);
   const [mapBig, setMapBig] = useState(() => { try { return localStorage.getItem("mapBig") === "1"; } catch { return false; } });
   const toggleMap = () => setMapBig((v) => { try { localStorage.setItem("mapBig", v ? "0" : "1"); } catch { /* private mode */ } return !v; });
   const navigate = useNavigate();
@@ -62,6 +65,7 @@ export function Board({ me }: { me: Me }) {
   const all = [...pipeline, ...scheduled];
 
   function onDragStart(e: DragEvent, job: OfficeJob) {
+    if (job.stage === "pipeline") dragFromDay.current = null;
     e.dataTransfer.setData("text/job-id", job.id);
     e.dataTransfer.effectAllowed = "move";
   }
@@ -70,8 +74,10 @@ export function Board({ me }: { me: Me }) {
     placeJob(e.dataTransfer.getData("text/job-id"), target);
   }
   /** Drop a job on "pipeline" or a day (YYYY-MM-DD). Used by card drags and map-pin drags. */
-  function placeJob(id: string, target: string) {
+  /** Drop a job on "pipeline" or a day (YYYY-MM-DD), optionally at a position in that day (default: last). */
+  function placeJob(id: string, target: string, index?: number) {
     setDropTarget(null);
+    setDropAt(null);
     const job = all.find((j) => j.id === id);
     if (!job || !canEdit) return;
     setErr(null);
@@ -80,15 +86,47 @@ export function Board({ me }: { me: Me }) {
       return;
     }
     if (job.stage === "submitted" || job.stage === "approved") { setErr(new Error("Finished jobs can't be moved.")); return; }
-    if (job.driverId) move.mutate({ id, body: { scheduledDate: target } });
-    else setAssign({ job, date: target });
+    // New order for that day with this job at the drop position; renumber 10, 20, 30…
+    const day = scheduled.filter((j) => j.scheduledDate === target && j.id !== id);
+    const at = Math.max(0, Math.min(index ?? day.length, day.length));
+    const ordered = [...day.slice(0, at), job, ...day.slice(at)];
+    const myOrder = (at + 1) * 10;
+    const others = ordered.filter((j) => j.id !== id).map((j) => ({ j, order: (ordered.indexOf(j) + 1) * 10 })).filter(({ j, order }) => j.sortOrder !== order);
+    const renumber = () => { for (const { j, order } of others) move.mutate({ id: j.id, body: { sortOrder: order } }); };
+    if (job.driverId) {
+      move.mutate({ id, body: job.scheduledDate === target ? { sortOrder: myOrder } : { scheduledDate: target, sortOrder: myOrder } });
+      renumber();
+    } else setAssign({ job, date: target, sortOrder: myOrder, renumber });
+  }
+  /** Where in a day's list the pointer is: before the first card whose middle is below it. */
+  function indexAt(dayEl: HTMLElement, clientY: number): number {
+    const cards = [...dayEl.querySelectorAll<HTMLElement>(".ev[data-id]")].filter((c) => !c.classList.contains("dragging"));
+    const i = cards.findIndex((c) => { const r = c.getBoundingClientRect(); return clientY < r.top + r.height / 2; });
+    return i === -1 ? cards.length : i;
   }
   const dropProps = (target: string) =>
     canEdit
       ? {
-          onDragOver: (e: DragEvent) => { e.preventDefault(); setDropTarget(target); },
-          onDragLeave: () => setDropTarget((t) => (t === target ? null : t)),
-          onDrop: (e: DragEvent) => dropOn(e, target),
+          onDragOver: (e: DragEvent) => {
+            e.preventDefault();
+            setDropTarget(target);
+            if (target !== "pipeline" && dragFromDay.current === target) {
+              const index = indexAt(e.currentTarget as HTMLElement, e.clientY);
+              setDropAt((d) => (d && d.day === target && d.index === index ? d : { day: target, index }));
+            }
+          },
+          onDragLeave: (e: DragEvent) => {
+            if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+            setDropTarget((t) => (t === target ? null : t));
+            setDropAt((d) => (d?.day === target ? null : d));
+          },
+          onDrop: (e: DragEvent) => {
+            e.preventDefault();
+            const id = e.dataTransfer.getData("text/job-id");
+            const reorder = target !== "pipeline" && dragFromDay.current === target;
+            dragFromDay.current = null;
+            placeJob(id, target, reorder ? indexAt(e.currentTarget as HTMLElement, e.clientY) : undefined);
+          },
         }
       : {};
 
@@ -159,32 +197,36 @@ export function Board({ me }: { me: Me }) {
             return (
               <section key={d} data-drop={d} className={`day${d === today ? " today" : ""}${dropTarget === d ? " drop" : ""}`} {...dropProps(d)}>
                 <h3>{fmtDay(d, { weekday: "short", day: "numeric" }).toUpperCase()} <span>{dayJobs.length}</span></h3>
-                {dayJobs.map((j) => (
-                  <div
-                    key={j.id}
-                    className={`ev${j.stage !== "scheduled" ? " done" : ""}`}
-                    style={{ borderLeftColor: j.driverColor ?? "#98a2b3" }}
-                    draggable={canEdit && j.stage === "scheduled"}
-                    onDragStart={(e) => onDragStart(e, j)}
-                    onClick={() => setOpenId(j.id)}
-                    onContextMenu={(e) => { if (!canEdit || j.stage !== "scheduled") return; e.preventDefault(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }}
-                    title={j.driverName ?? ""}
-                  >
-                    <b>{j.customerName}</b>
-                    {jobTypeLabel(j.jobType)}{j.scheduledTime ? ` · ${j.scheduledTime}` : ""}
-                    {(j.address || j.city) && (
-                      <a className="map-link" href={mapsUrl(j.address, j.city)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} draggable={false}>
-                        📍 {addressLine(j.address, j.city)}
-                      </a>
-                    )}
-                    <div className="muted small">{j.driverName}</div>
-                    {j.collectCents !== null && <div className="collect-mini">💵 Collect {money(j.collectCents)}</div>}
-                    <div style={{ marginTop: 4 }}>
-                      {j.stage === "scheduled" ? <CallPill status={j.callStatus} attempts={j.callAttempts} /> : <span className={`pill st-${j.stage}`}>{j.stage === "submitted" ? "Submitted" : "Approved"}</span>}
+                {dayJobs.map((j, i) => (
+                  <Fragment key={j.id}>
+                    {dropAt?.day === d && dropAt.index === i && <div className="drop-line" />}
+                    <div
+                      data-id={j.id}
+                      className={`ev compact${j.stage !== "scheduled" ? " done" : ""}`}
+                      style={{ borderLeftColor: j.driverColor ?? "#98a2b3" }}
+                      draggable={canEdit && j.stage === "scheduled"}
+                      onDragStart={(e) => { onDragStart(e, j); dragFromDay.current = d; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
+                      onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); dragFromDay.current = null; setDropAt(null); setDropTarget(null); }}
+                      onClick={() => setOpenId(j.id)}
+                      onContextMenu={(e) => { if (!canEdit || j.stage !== "scheduled") return; e.preventDefault(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }}
+                      title={[j.customerName, j.driverName, addressLine(j.address, j.city), j.stage === "scheduled" ? CALL_STATUS_LABELS[j.callStatus] : j.stage].filter(Boolean).join("\n")}
+                    >
+                      <div className="ev-line1">
+                        {j.stage === "scheduled" ? <i className={`dot cs-dot-${j.callStatus}`} /> : <span className={`stage-tag st-${j.stage}`}>{j.stage === "submitted" ? "Sub" : "✓"}</span>}
+                        <b>{j.customerName}</b>
+                      </div>
+                      <div className="ev-line2">
+                        <span>{jobTypeLabel(j.jobType)}{j.scheduledTime ? ` · ${j.scheduledTime}` : ""}</span>
+                        {j.collectCents !== null && <span title={`Collect ${money(j.collectCents)}`}>💵</span>}
+                        {j.stage === "scheduled" && <DaysBadge job={j} short />}
+                        {(j.address || j.city) && (
+                          <a className="map-icon" href={mapsUrl(j.address, j.city)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} draggable={false} title={`Directions: ${addressLine(j.address, j.city)}`}>📍</a>
+                        )}
+                      </div>
                     </div>
-                    {j.stage === "scheduled" && <DaysBadge job={j} />}
-                  </div>
+                  </Fragment>
                 ))}
+                {dropAt?.day === d && dropAt.index >= dayJobs.length && dayJobs.length > 0 && <div className="drop-line" />}
               </section>
             );
           })}
@@ -210,7 +252,8 @@ export function Board({ me }: { me: Me }) {
           drivers={drivers}
           onClose={() => setAssign(null)}
           onSave={(driverId, time) => {
-            move.mutate({ id: assign.job.id, body: { driverId, scheduledDate: assign.date, scheduledTime: time } });
+            move.mutate({ id: assign.job.id, body: { driverId, scheduledDate: assign.date, scheduledTime: time, ...(assign.sortOrder ? { sortOrder: assign.sortOrder } : {}) } });
+            assign.renumber?.();
             setAssign(null);
           }}
         />
@@ -296,9 +339,10 @@ function NewJobModal({ onClose }: { onClose: () => void }) {
 }
 
 
-function DaysBadge({ job }: { job: OfficeJob }) {
+function DaysBadge({ job, short }: { job: OfficeJob; short?: boolean }) {
   const d = daysOnUs(job.createdAt);
-  return <span className={`days${d >= 14 ? " old" : d >= 7 ? " aging" : ""}`} title="Days since this job was added">{d === 0 ? "Today" : `${d} day${d === 1 ? "" : "s"}`}</span>;
+  const label = short ? `${d}d` : d === 0 ? "Today" : `${d} day${d === 1 ? "" : "s"}`;
+  return <span className={`days${d >= 14 ? " old" : d >= 7 ? " aging" : ""}`} title={`${d} day${d === 1 ? "" : "s"} since this job was added`}>{label}</span>;
 }
 
 /** Right-click menu on a job: set the call status in one click. */

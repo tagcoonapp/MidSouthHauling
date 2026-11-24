@@ -289,6 +289,12 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
       if (!isIsoDate(b.scheduledDate)) return c.json({ error: "Bad date." }, 400);
       set("scheduled_date", b.scheduledDate);
       set("stage", "scheduled");
+      // Default order within a day is the order jobs were placed: new arrivals go last.
+      if (b.sortOrder === undefined && b.scheduledDate !== job.scheduled_date) {
+        const last = await c.env.DB.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM jobs WHERE scheduled_date = ? AND id != ? AND stage != 'pipeline'")
+          .bind(b.scheduledDate, job.id).first<{ m: number }>();
+        set("sort_order", (last?.m ?? 0) + 10);
+      }
       if (b.scheduledDate !== job.scheduled_date) events.push(["scheduled", `Scheduled for ${b.scheduledDate}`]);
     }
   }

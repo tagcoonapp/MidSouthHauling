@@ -326,3 +326,23 @@ code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.
   .right-col.map-big .ev { padding: 5px 7px; }
 }
 @media (max-width: 900px) { .right-col.map-big .map-canvas { height: 560px; } }
+
+/* compact calendar cards */
+.ev.compact { padding: 5px 7px; margin-bottom: 5px; font-size: 11.5px; line-height: 1.3; }
+.ev.compact .ev-line1 { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.ev.compact .ev-line1 b { display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ev.compact .ev-line2 { display: flex; align-items: center; gap: 5px; color: var(--mute); margin-top: 2px; flex-wrap: wrap; }
+.ev.compact .ev-line2 > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ev.compact .days { font-size: 10px; padding: 0 6px; margin-top: 0; }
+.ev.compact .map-icon { margin-left: auto; text-decoration: none; }
+.ev.dragging { opacity: .4; }
+.cs-dot-not_called { background: #98a2b3; }
+.cs-dot-attempted { background: #eab308; }
+.cs-dot-waiting { background: #3b82f6; }
+.cs-dot-confirmed { background: #16a34a; }
+.stage-tag { font-size: 9.5px; font-weight: 700; border-radius: 4px; padding: 0 4px; flex-shrink: 0; }
+.drop-line { height: 3px; background: var(--pri); border-radius: 2px; margin: 2px 0 5px; }
+.ev.compact .ev-line2 { flex-wrap: nowrap; }
+.ev.compact .ev-line2 > span:first-child { flex: 1 1 auto; min-width: 0; }
+.ev.compact .ev-line2 > * { flex-shrink: 0; }
+.ev.compact .ev-line2 > span:first-child { flex-shrink: 1; }
