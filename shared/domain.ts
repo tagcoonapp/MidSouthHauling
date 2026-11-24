@@ -97,6 +97,18 @@ export function daysOnUs(createdAtIso: string, now = Date.now()): number {
   return Math.max(0, Math.floor((now - Date.parse(createdAtIso)) / 86_400_000));
 }
 
+/** A note on the calendar between jobs, in a driver's day order. driverId null = everyone. */
+export interface CalendarNote {
+  id: string;
+  date: string;
+  driverId: string | null;
+  driverName: string | null;
+  driverColor: string | null;
+  text: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export const CALL_STATUSES = ["not_called", "attempted", "waiting", "confirmed"] as const;
 export type CallStatus = (typeof CALL_STATUSES)[number];
 
@@ -219,6 +231,8 @@ export interface DriverJob {
   keptPaidInFull: boolean | null;
   /** Repos: other possible addresses from a TLO search, one per line. */
   tloNotes: string;
+  /** Order within the day (shared with calendar notes). */
+  dayOrder: number;
 }
 
 export interface JobEvent {

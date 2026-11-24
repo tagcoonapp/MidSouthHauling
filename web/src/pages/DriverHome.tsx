@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import type { DriverJob, Me } from "../../../shared/domain";
+import type { CalendarNote, DriverJob, Me } from "../../../shared/domain";
 import { api } from "../api";
 import { CallPill, JobTypePill, StagePill } from "../components/bits";
 import { addDays, fmtDateTime, fmtDay, mapsUrl, weekStart, addressLine } from "../util";
@@ -78,13 +78,22 @@ function ScheduleTab({ me, week }: { me: Me; week: boolean }) {
   const to = from ? (week ? addDays(from, 6) : from) : null;
   const q = useQuery({
     queryKey: ["my-schedule", from, to],
-    queryFn: () => api.get<{ jobs: DriverJob[] }>(`/my/schedule?from=${from}&to=${to}`),
+    queryFn: () => api.get<{ jobs: DriverJob[]; notes: CalendarNote[] }>(`/my/schedule?from=${from}&to=${to}`),
     enabled: !!from,
     refetchInterval: 120_000,
   });
 
   if (!q.data) return <div className="pad muted">Loading…</div>;
   const jobs = q.data.jobs;
+  const notes = q.data.notes ?? [];
+  /** A day's stops with the office's notes in place, in the order the office set. */
+  const dayItems = (d: string) =>
+    [
+      ...jobs.filter((j) => j.scheduledDate === d).map((j) => ({ order: j.dayOrder, job: j as DriverJob | null, note: null as CalendarNote | null })),
+      ...notes.filter((n) => n.date === d).map((n) => ({ order: n.sortOrder, job: null as DriverJob | null, note: n as CalendarNote | null })),
+    ].sort((a, b) => a.order - b.order);
+  const renderItems = (d: string) =>
+    dayItems(d).map((it) => (it.job ? <JobCard key={it.job.id} job={it.job} me={me} /> : <div key={it.note!.id} className="card driver-note">📝 {it.note!.text}</div>));
   const done = jobs.filter((j) => j.stage !== "scheduled").length;
 
   if (!week) {
@@ -93,8 +102,8 @@ function ScheduleTab({ me, week }: { me: Me; week: boolean }) {
         <div className="pad-x muted" style={{ paddingTop: 12 }}>
           <b className="ink">{fmtDay(from!, { weekday: "long", month: "long", day: "numeric" })}</b> · {jobs.length} stop{jobs.length === 1 ? "" : "s"}
         </div>
-        {jobs.length === 0 && <div className="card empty-state">No jobs today.</div>}
-        {jobs.map((j) => <JobCard key={j.id} job={j} me={me} />)}
+        {jobs.length === 0 && notes.length === 0 && <div className="card empty-state">No jobs today.</div>}
+        {renderItems(from!)}
         {jobs.length > 0 && (
           <div className="card pad" style={{ margin: "16px 14px" }}>
             <div className="row">
@@ -112,11 +121,11 @@ function ScheduleTab({ me, week }: { me: Me; week: boolean }) {
     <div>
       {days.map((d) => {
         const dayJobs = jobs.filter((j) => j.scheduledDate === d);
-        if (!dayJobs.length) return null;
+        if (!dayJobs.length && !notes.some((n) => n.date === d)) return null;
         return (
           <section key={d}>
             <h3 className="day-head">{fmtDay(d, { weekday: "long", month: "short", day: "numeric" })}{d === base ? " · Today" : ""}</h3>
-            {dayJobs.map((j) => <JobCard key={j.id} job={j} me={me} />)}
+            {renderItems(d)}
           </section>
         );
       })}

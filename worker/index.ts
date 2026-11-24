@@ -6,6 +6,7 @@ import { jobRoutes, listRoutes, photoRoutes } from "./routes/jobs";
 import { teamRoutes } from "./routes/team";
 import { pricingRoutes } from "./routes/pricing";
 import { importRoutes } from "./routes/import";
+import { noteRoutes } from "./routes/notes";
 import { serveStatic } from "./static";
 import type { Env } from "./env";
 
@@ -26,6 +27,7 @@ app.route("/", authRoutes);
 app.route("/team", teamRoutes);
 app.route("/pricing", pricingRoutes);
 app.route("/import", importRoutes);
+app.route("/notes", noteRoutes);
 app.route("/jobs", jobRoutes);
 app.route("/photos", photoRoutes);
 app.route("/", listRoutes);

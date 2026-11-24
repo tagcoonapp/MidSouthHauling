@@ -96,6 +96,7 @@ export function toDriverJob(r: JobRow, photos: PhotoRow[]): DriverJob {
     collectedRef: r.collected_ref ?? "",
     keptPaidInFull: r.kept_paid_in_full === null || r.kept_paid_in_full === undefined ? null : !!r.kept_paid_in_full,
     tloNotes: r.tlo_notes ?? "",
+    dayOrder: r.sort_order ?? 0,
   };
 }
 

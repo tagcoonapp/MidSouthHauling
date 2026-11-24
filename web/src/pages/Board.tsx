@@ -5,7 +5,7 @@ import { api } from "../api";
 import { CallPill, ErrorText, JobTypePill, Modal } from "../components/bits";
 import { JobDrawer } from "./JobDrawer";
 import { JobMap } from "../components/JobMap";
-import { CALL_STATUS_LABELS, daysOnUs, type CallStatus } from "../../../shared/domain";
+import { CALL_STATUS_LABELS, daysOnUs, type CalendarNote, type CallStatus } from "../../../shared/domain";
 import { copyImportInstructions } from "./Import";
 import { useNavigate } from "react-router-dom";
 import { addDays, fmtDay, jobTypeLabel, mapsUrl, money, weekStart, addressLine } from "../util";
@@ -16,7 +16,11 @@ interface BoardData {
   to: string;
   pipeline: OfficeJob[];
   scheduled: OfficeJob[];
+  notes: CalendarNote[];
 }
+
+/** One slot in a day: a job or a note. Both share the day's order. */
+type DayItem = { kind: "job"; id: string; sortOrder: number; job: OfficeJob } | { kind: "note"; id: string; sortOrder: number; note: CalendarNote };
 
 export function useTeam(enabled = true) {
   return useQuery({ queryKey: ["team"], queryFn: () => api.get<TeamMember[]>("/team"), enabled, staleTime: 60_000 });
@@ -55,6 +59,12 @@ export function Board({ me }: { me: Me }) {
   const activeFilter = driverFilter && drivers.some((d) => d.id === driverFilter) ? driverFilter : "";
   const canEdit = me.permissions.editSchedule;
 
+  const noteMove = useMutation({
+    mutationFn: (v: { id: string; body: Record<string, unknown> }) => api.patch<CalendarNote>(`/notes/${v.id}`, v.body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["board"] }),
+    onError: setErr,
+  });
+  const [noteEdit, setNoteEdit] = useState<{ note?: CalendarNote; date: string } | null>(null);
   const move = useMutation({
     mutationFn: (v: { id: string; body: Record<string, unknown> }) => api.patch<OfficeJob>(`/jobs/${v.id}`, v.body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["board"] }),
@@ -66,6 +76,40 @@ export function Board({ me }: { me: Me }) {
   const missingNs = [...allPipeline, ...scheduled].filter((j) => j.missingFromNetsuiteAt && j.stage !== "submitted" && j.stage !== "approved");
   const pipeline = search.trim() ? allPipeline.filter((j) => matchesSearch(j, search)) : allPipeline;
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+  const notes = board.data.notes ?? [];
+  const itemsFor = (d: string, filtered: boolean): DayItem[] =>
+    [
+      ...scheduled.filter((j) => j.scheduledDate === d && (!filtered || !activeFilter || j.driverId === activeFilter)).map((j) => ({ kind: "job" as const, id: j.id, sortOrder: j.sortOrder, job: j })),
+      ...notes.filter((n) => n.date === d && (!filtered || !activeFilter || n.driverId === activeFilter || n.driverId === null)).map((n) => ({ kind: "note" as const, id: n.id, sortOrder: n.sortOrder, note: n })),
+    ].sort((a, b) => a.sortOrder - b.sortOrder || (a.kind === b.kind ? 0 : a.kind === "job" ? -1 : 1));
+  /** Turn a drop position in the (maybe driver-filtered) visible list into a position in the full day. */
+  function fullIndex(d: string, visibleIndex: number | undefined, movingId: string): number {
+    const full = itemsFor(d, false).filter((x) => x.id !== movingId);
+    if (visibleIndex === undefined) return full.length;
+    const visible = itemsFor(d, true).filter((x) => x.id !== movingId);
+    if (visibleIndex >= visible.length) {
+      const last = visible[visible.length - 1];
+      return last ? full.findIndex((x) => x.id === last.id) + 1 : full.length;
+    }
+    return full.findIndex((x) => x.id === visible[visibleIndex]!.id);
+  }
+  /** Renumber a day 10, 20, 30… with `moving` at `at`; returns the moving item's order and saves the others that changed. */
+  function renumberDay(d: string, movingId: string, at: number) {
+    const full = itemsFor(d, false).filter((x) => x.id !== movingId);
+    const pos = Math.max(0, Math.min(at, full.length));
+    const changes = [...full.slice(0, pos), null, ...full.slice(pos)]
+      .map((x, i) => ({ x, order: (i + 1) * 10 }))
+      .filter((r): r is { x: DayItem; order: number } => r.x !== null && r.x.sortOrder !== r.order);
+    return {
+      myOrder: (pos + 1) * 10,
+      save: () => {
+        for (const { x, order } of changes) {
+          if (x.kind === "job") move.mutate({ id: x.id, body: { sortOrder: order } });
+          else noteMove.mutate({ id: x.id, body: { sortOrder: order } });
+        }
+      },
+    };
+  }
   const all = [...pipeline, ...scheduled];
 
   function onDragStart(e: DragEvent, job: OfficeJob) {
@@ -90,18 +134,23 @@ export function Board({ me }: { me: Me }) {
       return;
     }
     if (job.stage === "submitted" || job.stage === "approved") { setErr(new Error("Finished jobs can't be moved.")); return; }
-    // New order for that day with this job at the drop position; renumber 10, 20, 30…
-    const day = scheduled.filter((j) => j.scheduledDate === target && j.id !== id);
-    const at = Math.max(0, Math.min(index ?? day.length, day.length));
-    const ordered = [...day.slice(0, at), job, ...day.slice(at)];
-    const myOrder = (at + 1) * 10;
-    const others = ordered.filter((j) => j.id !== id).map((j) => ({ j, order: (ordered.indexOf(j) + 1) * 10 })).filter(({ j, order }) => j.sortOrder !== order);
-    const renumber = () => { for (const { j, order } of others) move.mutate({ id: j.id, body: { sortOrder: order } }); };
+    // New order for that day (jobs and notes) with this job at the drop position; renumber 10, 20, 30…
+    const { myOrder, save: renumber } = renumberDay(target, id, fullIndex(target, index, id));
     // Already on the calendar: keep its driver. From the pipeline (or map): always pick a driver.
     if (job.stage === "scheduled" && job.driverId) {
       move.mutate({ id, body: job.scheduledDate === target ? { sortOrder: myOrder } : { scheduledDate: target, sortOrder: myOrder } });
       renumber();
     } else setAssign({ job, date: target, sortOrder: myOrder, renumber });
+  }
+  function placeNote(id: string, target: string, index?: number) {
+    setDropTarget(null);
+    setDropAt(null);
+    if (target === "pipeline") return; // notes live on the calendar only
+    const note = notes.find((n) => n.id === id);
+    if (!note) return;
+    const { myOrder, save } = renumberDay(target, id, fullIndex(target, index, id));
+    noteMove.mutate({ id, body: note.date === target ? { sortOrder: myOrder } : { date: target, sortOrder: myOrder } });
+    save();
   }
   /** Where in a day's list the pointer is: before the first card whose middle is below it. */
   function indexAt(dayEl: HTMLElement, clientY: number): number {
@@ -127,10 +176,12 @@ export function Board({ me }: { me: Me }) {
           },
           onDrop: (e: DragEvent) => {
             e.preventDefault();
-            const id = e.dataTransfer.getData("text/job-id");
             const reorder = target !== "pipeline" && dragFromDay.current === target;
+            const at = reorder ? indexAt(e.currentTarget as HTMLElement, e.clientY) : undefined;
             dragFromDay.current = null;
-            placeJob(id, target, reorder ? indexAt(e.currentTarget as HTMLElement, e.clientY) : undefined);
+            const noteId = e.dataTransfer.getData("text/note-id");
+            if (noteId) { placeNote(noteId, target, at); return; }
+            placeJob(e.dataTransfer.getData("text/job-id"), target, at);
           },
         }
       : {};
@@ -214,41 +265,54 @@ export function Board({ me }: { me: Me }) {
         <div className={`right-col${mapBig ? " map-big" : ""}`}>
         <div className="cal">
           {days.map((d) => {
-            const dayJobs = scheduled.filter((j) => j.scheduledDate === d && (!activeFilter || j.driverId === activeFilter));
+            const items = itemsFor(d, true);
+            const jobCount = items.filter((x) => x.kind === "job").length;
             return (
               <section key={d} data-drop={d} className={`day${d === today ? " today" : ""}${dropTarget === d ? " drop" : ""}`} {...dropProps(d)}>
-                <h3>{fmtDay(d, { weekday: "short", day: "numeric" }).toUpperCase()} <span>{dayJobs.length}</span></h3>
-                {dayJobs.map((j, i) => (
-                  <Fragment key={j.id}>
+                <h3>
+                  {fmtDay(d, { weekday: "short", day: "numeric" }).toUpperCase()}
+                  <span className="row" style={{ gap: 6 }}>
+                    {canEdit && <button className="add-note" title="Add a note to this day" onClick={() => setNoteEdit({ date: d })}>＋ Note</button>}
+                    {jobCount}
+                  </span>
+                </h3>
+                {items.map((it, i) => (
+                  <Fragment key={it.id}>
                     {dropAt?.day === d && dropAt.index === i && <div className="drop-line" />}
-                    <div
-                      data-id={j.id}
-                      className={`ev compact${j.stage !== "scheduled" ? " done" : ""}`}
-                      style={{ borderLeftColor: j.driverColor ?? "#98a2b3" }}
-                      draggable={canEdit && j.stage === "scheduled"}
-                      onDragStart={(e) => { onDragStart(e, j); dragFromDay.current = d; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
-                      onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); dragFromDay.current = null; setDropAt(null); setDropTarget(null); }}
-                      onClick={() => setOpenId(j.id)}
-                      onContextMenu={(e) => { if (!canEdit || j.stage !== "scheduled") return; e.preventDefault(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }}
-                      title={[j.customerName, j.driverName, addressLine(j.address, j.city), j.stage === "scheduled" ? CALL_STATUS_LABELS[j.callStatus] : j.stage].filter(Boolean).join("\n")}
-                    >
-                      <div className="ev-line1">
-                        {j.stage === "scheduled" ? <i className={`dot cs-dot-${j.callStatus}`} /> : <span className={`stage-tag st-${j.stage}`}>{j.stage === "submitted" ? "Sub" : "✓"}</span>}
-                        <b>{j.customerName}</b>
-                        {j.missingFromNetsuiteAt && <span className="ns-mini" title="Not in NetSuite's In Progress list anymore">⚠️</span>}
+                    {it.kind === "note" ? (
+                      <div
+                        data-id={it.id}
+                        className="ev note-ev"
+                        style={{ borderLeftColor: it.note.driverColor ?? "#98a2b3" }}
+                        draggable={canEdit}
+                        onDragStart={(e) => { e.dataTransfer.setData("text/note-id", it.id); e.dataTransfer.effectAllowed = "move"; dragFromDay.current = d; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
+                        onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); dragFromDay.current = null; setDropAt(null); setDropTarget(null); }}
+                        onClick={() => canEdit && setNoteEdit({ note: it.note, date: d })}
+                        title={`${it.note.driverName ?? "Everyone"}: ${it.note.text}`}
+                      >
+                        📝 {it.note.text}
                       </div>
-                      <div className="ev-line2">
-                        <span>{jobTypeLabel(j.jobType)}{j.scheduledTime ? ` · ${j.scheduledTime}` : ""}</span>
-                        {j.collectCents !== null && <span title={`Collect ${money(j.collectCents)}`}>💵</span>}
-                        {j.stage === "scheduled" && <DaysBadge job={j} short />}
-                        {(j.address || j.city) && (
-                          <a className="map-icon" href={mapsUrl(j.address, j.city)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} draggable={false} title={`Directions: ${addressLine(j.address, j.city)}`}>📍</a>
-                        )}
+                    ) : (
+                      <div
+                        data-id={it.id}
+                        className={`ev compact${it.job.stage !== "scheduled" ? " done" : ""}`}
+                        style={{ borderLeftColor: it.job.driverColor ?? "#98a2b3" }}
+                        draggable={canEdit && it.job.stage === "scheduled"}
+                        onDragStart={(e) => { onDragStart(e, it.job); dragFromDay.current = d; (e.currentTarget as HTMLElement).classList.add("dragging"); }}
+                        onDragEnd={(e) => { (e.currentTarget as HTMLElement).classList.remove("dragging"); dragFromDay.current = null; setDropAt(null); setDropTarget(null); }}
+                        onClick={() => setOpenId(it.id)}
+                        onContextMenu={(e) => { if (!canEdit || it.job.stage !== "scheduled") return; e.preventDefault(); setMenu({ job: it.job, x: e.clientX, y: e.clientY }); }}
+                        title={[it.job.customerName, `${jobTypeLabel(it.job.jobType)}${it.job.scheduledTime ? ` · ${it.job.scheduledTime}` : ""}`, it.job.driverName, addressLine(it.job.address, it.job.city), it.job.stage === "scheduled" ? CALL_STATUS_LABELS[it.job.callStatus] : it.job.stage, it.job.collectCents !== null ? `Collect ${money(it.job.collectCents)}` : "", `${daysOnUs(it.job.createdAt)} days on us`].filter(Boolean).join("\n")}
+                      >
+                        {it.job.stage === "scheduled" ? <i className={`dot cs-dot-${it.job.callStatus}`} /> : <span className={`stage-tag st-${it.job.stage}`}>{it.job.stage === "submitted" ? "Sub" : "✓"}</span>}
+                        <b>{it.job.customerName}</b>
+                        {it.job.missingFromNetsuiteAt && <span className="ns-mini" title="Not in NetSuite's In Progress list anymore">⚠️</span>}
+                        {it.job.collectCents !== null && <span className="ns-mini" title={`Collect ${money(it.job.collectCents)}`}>💵</span>}
                       </div>
-                    </div>
+                    )}
                   </Fragment>
                 ))}
-                {dropAt?.day === d && dropAt.index >= dayJobs.length && dayJobs.length > 0 && <div className="drop-line" />}
+                {dropAt?.day === d && dropAt.index >= items.length && items.length > 0 && <div className="drop-line" />}
               </section>
             );
           })}
@@ -258,6 +322,16 @@ export function Board({ me }: { me: Me }) {
       </div>
 
       {openId && <JobDrawer id={openId} me={me} drivers={drivers} onClose={() => setOpenId(null)} />}
+      {noteEdit && (
+        <NoteModal
+          note={noteEdit.note}
+          date={noteEdit.date}
+          drivers={drivers}
+          defaultDriver={activeFilter}
+          onClose={() => setNoteEdit(null)}
+          onSaved={() => { setNoteEdit(null); qc.invalidateQueries({ queryKey: ["board"] }); }}
+        />
+      )}
       {menu && (
         <StatusMenu
           {...menu}
@@ -398,4 +472,37 @@ export function matchesSearch(j: OfficeJob, q: string): boolean {
     const wd = w.replace(/\D/g, "");
     return wd.length >= 3 && (digits.includes(wd) || j.serial.replace(/\D/g, "").includes(wd));
   });
+}
+
+/** Add or edit a calendar note. Notes sit in the day's order like a job; drag them to reorder. */
+function NoteModal({ note, date, drivers, defaultDriver, onClose, onSaved }: {
+  note?: CalendarNote; date: string; drivers: TeamMember[]; defaultDriver: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [text, setText] = useState(note?.text ?? "");
+  const [driverId, setDriverId] = useState(note ? note.driverId ?? "" : defaultDriver);
+  const save = useMutation({
+    mutationFn: () => (note ? api.patch(`/notes/${note.id}`, { text, driverId: driverId || null }) : api.post("/notes", { date, text, driverId: driverId || null })),
+    onSuccess: onSaved,
+  });
+  const del = useMutation({ mutationFn: () => api.del(`/notes/${note!.id}`), onSuccess: onSaved });
+  return (
+    <Modal title={`${note ? "Edit note" : "Add a note"} · ${fmtDay(date)}`} onClose={onClose}>
+      <form className="form" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <label>Note<textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Pick up trailer at the shop" autoFocus required /></label>
+        <label>For
+          <select value={driverId} onChange={(e) => setDriverId(e.target.value)}>
+            <option value="">Everyone</option>
+            {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </label>
+        <p className="muted small">It's added at the end of the day. Drag it to put it between jobs. The driver sees it in their stops in that spot.</p>
+        <ErrorText error={save.error || del.error} />
+        <div className="row-end">
+          {note && <button type="button" className="btn danger" onClick={() => confirm("Delete this note?") && del.mutate()}>Delete</button>}
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn pri" disabled={!text.trim() || save.isPending}>Save</button>
+        </div>
+      </form>
+    </Modal>
+  );
 }

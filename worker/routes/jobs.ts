@@ -20,6 +20,7 @@ import {
 import { draftForJob, loadPricing } from "../pricing-store";
 import { readJobPhotos } from "../photo-reader";
 import { geocodePending } from "../geocode";
+import { NOTE_SELECT, endOfDay, toNote } from "./notes";
 import { newId, requirePermission } from "../auth";
 import { addDays, isIsoDate, localToday } from "../dates";
 import type { AppEnv, SessionUser } from "../env";
@@ -145,12 +146,14 @@ jobRoutes.get("/board", requirePermission("viewPipeline"), async (c) => {
   // Put any new addresses on the map in the background (free geocoders, cached per job).
   if (all.some((j) => (j as { geo_status?: string }).geo_status === "none")) c.executionCtx.waitUntil(geocodePending(c.env).catch(() => {}));
   const photos = await photosForJobs(c.env.DB, all.map((j) => j.id));
+  const { results: notes } = await c.env.DB.prepare(`${NOTE_SELECT} WHERE n.date BETWEEN ? AND ? ORDER BY n.date, n.sort_order, n.created_at`).bind(from, to).all();
   return c.json({
     today,
     from,
     to,
     pipeline: pipeline.results.map((j) => toOfficeJob(j, photos)),
     scheduled: scheduled.results.map((j) => toOfficeJob(j, photos)),
+    notes: notes.map((n) => toNote(n as unknown as Parameters<typeof toNote>[0])),
   });
 });
 
@@ -296,9 +299,7 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
       set("stage", "scheduled");
       // Default order within a day is the order jobs were placed: new arrivals go last.
       if (b.sortOrder === undefined && b.scheduledDate !== job.scheduled_date) {
-        const last = await c.env.DB.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM jobs WHERE scheduled_date = ? AND id != ? AND stage != 'pipeline'")
-          .bind(b.scheduledDate, job.id).first<{ m: number }>();
-        set("sort_order", (last?.m ?? 0) + 10);
+        set("sort_order", await endOfDay(c.env.DB, b.scheduledDate, job.id));
       }
       if (b.scheduledDate !== job.scheduled_date) events.push(["scheduled", `Scheduled for ${b.scheduledDate}`]);
     }
@@ -545,7 +546,10 @@ listRoutes.get("/my/schedule", async (c) => {
     .bind(user.id, from, to)
     .all<JobRow>();
   const photos = await photosForJobs(c.env.DB, results.map((j) => j.id));
-  return c.json({ today, from, to, jobs: results.map((j) => toDriverJob(j, photos)) });
+  const { results: notes } = await c.env.DB.prepare(
+    `${NOTE_SELECT} WHERE n.date BETWEEN ? AND ? AND (n.driver_id = ? OR n.driver_id IS NULL) ORDER BY n.date, n.sort_order, n.created_at`,
+  ).bind(from, to, user.id).all();
+  return c.json({ today, from, to, jobs: results.map((j) => toDriverJob(j, photos)), notes: notes.map((n) => toNote(n as unknown as Parameters<typeof toNote>[0])) });
 });
 
 /** A driver's own submitted jobs from the last 60 days. */

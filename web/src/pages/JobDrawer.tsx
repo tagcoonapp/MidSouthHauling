@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CALL_STATUSES, JOB_TYPES, type CallStatus, type JobType, type Me, type OfficeJob, type TeamMember } from "../../../shared/domain";
 import { api } from "../api";
 import { CallPill, ErrorText, PhotoGrid, StagePill } from "../components/bits";
-import { callLabel, fmtDateTime, fmtDay, jobTypeLabel, money } from "../util";
+import { callLabel, fmtDateTime, fmtDay, jobTypeLabel, mapsUrl, money } from "../util";
 
 export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; drivers: TeamMember[]; onClose: () => void }) {
   const qc = useQueryClient();
@@ -70,6 +70,7 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
                   <StagePill stage={job.stage} />
                   {job.scheduledDate && <span className="muted small">{fmtDay(job.scheduledDate)}{job.scheduledTime ? ` · ${job.scheduledTime}` : ""}</span>}
                   {job.driverName && <span className="small"><i className="dot" style={{ background: job.driverColor ?? "#999" }} /> {job.driverName}</span>}
+                  {(job.address || job.city) && <a className="small drawer-dir" href={mapsUrl(job.address, job.city)} target="_blank" rel="noreferrer">📍 Directions</a>}
                 </div>
               </div>
               <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
