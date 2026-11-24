@@ -4,6 +4,8 @@ import type { AppEnv } from "./env";
 import { authRoutes } from "./routes/auth";
 import { jobRoutes, listRoutes, photoRoutes } from "./routes/jobs";
 import { teamRoutes } from "./routes/team";
+import { serveStatic } from "./static";
+import type { Env } from "./env";
 
 const app = new Hono<AppEnv>().basePath("/api");
 
@@ -30,4 +32,11 @@ app.onError((err, c) => {
   return c.json({ error: "Something went wrong. Try again." }, 500);
 });
 
-export default app;
+export default {
+  fetch(req: Request, env: Env, ctx: ExecutionContext) {
+    const path = new URL(req.url).pathname;
+    if (path === "/api" || path.startsWith("/api/")) return app.fetch(req, env, ctx);
+    if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
+    return serveStatic(req);
+  },
+} satisfies ExportedHandler<Env>;

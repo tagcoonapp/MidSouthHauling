@@ -3,7 +3,6 @@ import type { Role } from "../shared/domain";
 export interface Env {
   DB: D1Database;
   FILES: R2Bucket;
-  ASSETS: Fetcher;
   LOGIN_LIMITER?: RateLimit;
   TIMEZONE: string;
 }

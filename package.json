@@ -6,13 +6,13 @@
   "scripts": {
     "dev": "npm run build && wrangler dev",
     "dev:web": "vite",
-    "build": "vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "vite build && node scripts/embed-assets.mjs",
+    "typecheck": "npm run build && tsc --noEmit",
     "test": "vitest run",
     "check": "npm run typecheck && npm test",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "deploy": "npm run build && wrangler d1 migrations apply DB --remote && wrangler deploy"
+    "deploy": "npm run build && npm test && wrangler d1 migrations apply DB --remote && wrangler deploy"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.108.2",

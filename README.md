@@ -24,11 +24,14 @@ The first visit asks you to create the scheduler account. Add drivers and owners
 - `shared/` – job types, call statuses, roles and permissions used by both
 - `migrations/` – database schema (Cloudflare D1)
 - `test/` – access-rule tests
+- `scripts/embed-assets.mjs` – packs the built web app into the Worker
 
-## Deploy (free Cloudflare plan)
-1. `npx wrangler d1 create midsouthhauling-db` and paste the `database_id` into `wrangler.jsonc`.
-2. `npx wrangler r2 bucket create midsouthhauling-files`
-3. `npm run deploy`
+## Live
+https://midsouthhauling.tagcoon.workers.dev (Cloudflare free plan: Worker `midsouthhauling`, D1 `midsouthhauling-db`, R2 `midsouthhauling-files`).
+
+Deploy: `npm run deploy` (builds, runs tests, applies new migrations, uploads). The web app is embedded into the
+Worker at build time (`scripts/embed-assets.mjs`) so a deploy is a single script upload; Claude cloud sessions
+can't use Wrangler's separate static-asset upload because their proxy replaces its one-time upload token.
 
 ## Brand
 Colors are the variables at the top of `web/src/styles.css` (`--brand`, `--accent`). The logo is `web/public/icon.svg`.
