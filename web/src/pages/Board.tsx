@@ -33,6 +33,8 @@ export function Board({ me }: { me: Me }) {
   const [menu, setMenu] = useState<{ job: OfficeJob; x: number; y: number } | null>(null);
   const [search, setSearch] = useState("");
   const [dropAt, setDropAt] = useState<{ day: string; index: number } | null>(null);
+  const [driverFilter, setDriverFilter] = useState<string>(() => { try { return localStorage.getItem("driverFilter") ?? ""; } catch { return ""; } });
+  const pickDriverFilter = (id: string) => { setDriverFilter(id); try { localStorage.setItem("driverFilter", id); } catch { /* private mode */ } };
   // Day the dragged card came from: only drags within the same day reorder; anything else goes to the end (order placed).
   const dragFromDay = useRef<string | null>(null);
   const [mapBig, setMapBig] = useState(() => { try { return localStorage.getItem("mapBig") === "1"; } catch { return false; } });
@@ -50,6 +52,7 @@ export function Board({ me }: { me: Me }) {
   });
   const team = useTeam();
   const drivers = (team.data ?? []).filter((u) => u.role === "driver" && u.active);
+  const activeFilter = driverFilter && drivers.some((d) => d.id === driverFilter) ? driverFilter : "";
   const canEdit = me.permissions.editSchedule;
 
   const move = useMutation({
@@ -94,7 +97,8 @@ export function Board({ me }: { me: Me }) {
     const myOrder = (at + 1) * 10;
     const others = ordered.filter((j) => j.id !== id).map((j) => ({ j, order: (ordered.indexOf(j) + 1) * 10 })).filter(({ j, order }) => j.sortOrder !== order);
     const renumber = () => { for (const { j, order } of others) move.mutate({ id: j.id, body: { sortOrder: order } }); };
-    if (job.driverId) {
+    // Already on the calendar: keep its driver. From the pipeline (or map): always pick a driver.
+    if (job.stage === "scheduled" && job.driverId) {
       move.mutate({ id, body: job.scheduledDate === target ? { sortOrder: myOrder } : { scheduledDate: target, sortOrder: myOrder } });
       renumber();
     } else setAssign({ job, date: target, sortOrder: myOrder, renumber });
@@ -146,7 +150,12 @@ export function Board({ me }: { me: Me }) {
       </div>
       <div className="legend">
         <b>Drivers:</b>
-        {drivers.map((d) => <span key={d.id}><i className="dot" style={{ background: d.color }} /> {d.name}</span>)}
+        <button className={`driver-filter${!activeFilter ? " on" : ""}`} onClick={() => pickDriverFilter("")}>All</button>
+        {drivers.map((d) => (
+          <button key={d.id} className={`driver-filter${activeFilter === d.id ? " on" : ""}`} style={{ ["--c" as string]: d.color }} onClick={() => pickDriverFilter(activeFilter === d.id ? "" : d.id)} title={`Show only ${d.name}'s jobs on the calendar`}>
+            <i className="dot" style={{ background: d.color }} /> {d.name}
+          </button>
+        ))}
         {drivers.length === 0 && <span>No drivers yet{me.permissions.manageTeam ? " (add them on the Team page)" : ""}</span>}
         <b style={{ marginLeft: 10 }}>Calls:</b>
         {CALL_STATUSES.map((s) => <CallPill key={s} status={s} />)}
@@ -205,7 +214,7 @@ export function Board({ me }: { me: Me }) {
         <div className={`right-col${mapBig ? " map-big" : ""}`}>
         <div className="cal">
           {days.map((d) => {
-            const dayJobs = scheduled.filter((j) => j.scheduledDate === d);
+            const dayJobs = scheduled.filter((j) => j.scheduledDate === d && (!activeFilter || j.driverId === activeFilter));
             return (
               <section key={d} data-drop={d} className={`day${d === today ? " today" : ""}${dropTarget === d ? " drop" : ""}`} {...dropProps(d)}>
                 <h3>{fmtDay(d, { weekday: "short", day: "numeric" }).toUpperCase()} <span>{dayJobs.length}</span></h3>
@@ -278,7 +287,7 @@ export function Board({ me }: { me: Me }) {
 function AssignModal({ job, date, drivers, onClose, onSave }: {
   job: OfficeJob; date: string; drivers: TeamMember[]; onClose: () => void; onSave: (driverId: string, time: string) => void;
 }) {
-  const [driverId, setDriverId] = useState(drivers[0]?.id ?? "");
+  const [driverId, setDriverId] = useState(job.stage === "scheduled" ? job.driverId ?? "" : "");
   const [time, setTime] = useState(job.scheduledTime ?? "");
   return (
     <Modal title={`${job.customerName} → ${fmtDay(date)}`} onClose={onClose}>

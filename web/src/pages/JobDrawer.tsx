@@ -11,6 +11,8 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
   const q = useQuery({ queryKey: ["job", id], queryFn: () => api.get<OfficeJob>(`/jobs/${id}`) });
   const [edit, setEdit] = useState<Record<string, string>>({});
   const [callNote, setCallNote] = useState("");
+  const [planDay, setPlanDay] = useState("");
+  const [planDriver, setPlanDriver] = useState("");
   const pdfInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => setEdit({}), [id]);
@@ -96,19 +98,33 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
             {canEdit && !locked && (
               <section className="drawer-sec">
                 <h3>Schedule</h3>
-                <div className="form grid2">
-                  <label>Day<input type="date" value={job.scheduledDate ?? ""} onChange={(e) => e.target.value && patch.mutate({ scheduledDate: e.target.value, driverId: job.driverId ?? drivers[0]?.id })} /></label>
-                  <label>Driver
-                    <select value={job.driverId ?? ""} onChange={(e) => patch.mutate({ driverId: e.target.value || null })}>
-                      <option value="">— none —</option>
-                      {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                  </label>
-                  {field("scheduledTime", "Time")}
-                  <div style={{ alignSelf: "end" }}>
-                    {job.stage === "scheduled" && <button className="btn small" onClick={() => patch.mutate({ scheduledDate: null })}>Move back to pipeline</button>}
+                {job.stage === "pipeline" ? (
+                  <div className="form grid2">
+                    <label>Day<input type="date" value={planDay} onChange={(e) => setPlanDay(e.target.value)} /></label>
+                    <label>Driver
+                      <select value={planDriver} onChange={(e) => setPlanDriver(e.target.value)}>
+                        <option value="">Pick a driver…</option>
+                        {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </label>
+                    <div className="span2 row-end">
+                      <button className="btn pri small" disabled={!planDay || !planDriver || patch.isPending} onClick={() => patch.mutate({ scheduledDate: planDay, driverId: planDriver })}>Put on the calendar</button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="form grid2">
+                    <label>Day<input type="date" value={job.scheduledDate ?? ""} onChange={(e) => e.target.value && patch.mutate({ scheduledDate: e.target.value })} /></label>
+                    <label>Driver
+                      <select value={job.driverId ?? ""} onChange={(e) => e.target.value && patch.mutate({ driverId: e.target.value })}>
+                        {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </label>
+                    {field("scheduledTime", "Time")}
+                    <div style={{ alignSelf: "end" }}>
+                      <button className="btn small" onClick={() => patch.mutate({ scheduledDate: null })}>Move back to pipeline (clears driver)</button>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 

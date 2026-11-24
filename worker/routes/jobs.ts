@@ -284,7 +284,12 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
     if (b.scheduledDate === null) {
       set("scheduled_date", null);
       set("stage", "pipeline");
-      events.push(["unscheduled", "Moved back to pipeline"]);
+      // Pipeline jobs have no driver or time; they're picked again when the job goes back on the calendar.
+      if (!sets.some((x) => x.startsWith("driver_id"))) set("driver_id", null);
+      else { const i = sets.findIndex((x) => x.startsWith("driver_id")); vals[i] = null; }
+      set("scheduled_time", null);
+      driverId = null;
+      events.push(["unscheduled", job.driver_name ? `Moved back to pipeline (unassigned from ${job.driver_name})` : "Moved back to pipeline"]);
     } else {
       if (!isIsoDate(b.scheduledDate)) return c.json({ error: "Bad date." }, 400);
       set("scheduled_date", b.scheduledDate);
@@ -300,6 +305,9 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
   }
   const finalStage = b.scheduledDate === null ? "pipeline" : b.scheduledDate !== undefined ? "scheduled" : job.stage;
   if (finalStage === "scheduled" && !driverId) return c.json({ error: "Pick a driver for this day." }, 400);
+  if (finalStage === "pipeline" && b.driverId) return c.json({ error: "Pick a day too. Jobs in the pipeline don't have a driver." }, 400);
+  // Putting a pipeline job on the calendar needs a driver chosen in the same step.
+  if (job.stage === "pipeline" && finalStage === "scheduled" && !b.driverId) return c.json({ error: "Pick a driver for this day." }, 400);
 
   if (!sets.length) return c.json({ error: "Nothing to change." }, 400);
   sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
