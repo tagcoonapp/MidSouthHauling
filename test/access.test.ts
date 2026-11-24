@@ -9,6 +9,7 @@ const row: JobRow = {
   call_status: "confirmed", call_attempts: 2, driver_id: "d1", driver_name: "Marcus", driver_color: "#2563eb",
   scheduled_date: "2026-11-23", scheduled_time: "11:30 AM", office_notes: "", driver_notes: "", pdf_key: null,
   submitted_at: null, created_at: "2026-11-20T00:00:00Z",
+  reported_customer_name: "", miles: 31, lot_taken_to: "", moody: 0, amount_override_cents: 38500,
 };
 
 describe("roles", () => {
@@ -31,8 +32,9 @@ describe("driver job view", () => {
     const j = toDriverJob(row, []) as unknown as Record<string, unknown>;
     const json = JSON.stringify(j);
     expect(json).not.toContain("2115");
+    expect(json).not.toContain("385");
     expect(Object.keys(j)).not.toEqual(expect.arrayContaining(["balanceCents"]));
-    for (const k of Object.keys(j)) expect(k.toLowerCase()).not.toMatch(/balance|price|amount|cost|driver(id|name|color)/);
+    for (const k of Object.keys(j)) expect(k.toLowerCase()).not.toMatch(/balance|price|amount|cost|override|moody|draft|expense|driver(id|name|color)/);
   });
   it("office view adds the balance", () => {
     expect(toOfficeJob(row, []).balanceCents).toBe(211540);

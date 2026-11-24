@@ -23,6 +23,11 @@ export interface JobRow {
   pdf_key: string | null;
   submitted_at: string | null;
   created_at: string;
+  reported_customer_name: string;
+  miles: number | null;
+  lot_taken_to: string;
+  moody: number;
+  amount_override_cents: number | null;
 }
 
 export interface PhotoRow {
@@ -60,6 +65,9 @@ export function toDriverJob(r: JobRow, photos: PhotoRow[]): DriverJob {
     hasPdf: !!r.pdf_key,
     photos: photosFor(photos, r.id),
     submittedAt: r.submitted_at,
+    reportedCustomerName: r.reported_customer_name,
+    miles: r.miles,
+    lotTakenTo: r.lot_taken_to,
   };
 }
 
@@ -72,5 +80,7 @@ export function toOfficeJob(r: JobRow, photos: PhotoRow[]): OfficeJob {
     driverColor: r.driver_color ?? null,
     callAttempts: r.call_attempts,
     createdAt: r.created_at,
+    moody: !!r.moody,
+    amountOverrideCents: r.amount_override_cents,
   };
 }

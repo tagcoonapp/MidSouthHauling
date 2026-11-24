@@ -31,6 +31,7 @@ export function OfficeLayout({ me }: { me: Me }) {
             </NavLink>
           )}
           <NavLink to="/completed">Completed</NavLink>
+          {me.permissions.approveExpenses && <NavLink to="/pricing">Pricing</NavLink>}
           {me.permissions.manageTeam && <NavLink to="/team">Team</NavLink>}
           <NavLink to="/account">My account</NavLink>
         </nav>

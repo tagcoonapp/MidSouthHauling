@@ -8,9 +8,13 @@ import {
   MAX_PHOTOS_PER_JOB,
   isCallStatus,
   isJobType,
+  missingDriverAnswers,
   permissionsFor,
+  type ApprovedExpense,
   type JobEvent,
+  type JobType,
 } from "../../shared/domain";
+import { draftForJob, loadPricing } from "../pricing-store";
 import { newId, requirePermission } from "../auth";
 import { addDays, isIsoDate, localToday } from "../dates";
 import type { AppEnv, SessionUser } from "../env";
@@ -71,6 +75,8 @@ async function respondJob(c: C, job: JobRow, withEvents = false) {
   const user = c.get("user");
   if (!permissionsFor(user.role).viewFinancial) return c.json(toDriverJob(job, photos));
   const out = toOfficeJob(job, photos);
+  if (job.stage === "submitted" && permissionsFor(user.role).viewPendingExpenses) out.draft = draftForJob(job, await loadPricing(c.env.DB));
+  if (job.stage === "approved") out.expenses = await expensesFor(c.env.DB, [job.id]);
   if (withEvents) {
     const { results } = await c.env.DB.prepare(
       `SELECT e.id, e.kind, e.detail, e.created_at, COALESCE(u.name, 'System') AS user_name
@@ -81,6 +87,29 @@ async function respondJob(c: C, job: JobRow, withEvents = false) {
     out.events = results.map((e): JobEvent => ({ id: e.id, kind: e.kind, detail: e.detail, userName: e.user_name, createdAt: e.created_at }));
   }
   return c.json(out);
+}
+
+async function expensesFor(db: D1Database, jobIds: string[]): Promise<(ApprovedExpense & { jobId: string })[]> {
+  if (!jobIds.length) return [];
+  const out: (ApprovedExpense & { jobId: string })[] = [];
+  for (let i = 0; i < jobIds.length; i += 50) {
+    const chunk = jobIds.slice(i, i + 50);
+    const { results } = await db
+      .prepare(`SELECT * FROM expenses WHERE job_id IN (${chunk.map(() => "?").join(",")}) ORDER BY kind DESC`)
+      .bind(...chunk)
+      .all<{ id: string; job_id: string; kind: "main" | "fuel"; description: string; basis: string; amount_cents: number; approved_at: string; entered_at: string | null }>();
+    out.push(...results.map((e) => ({
+      id: e.id, jobId: e.job_id, kind: e.kind, description: e.description, basis: e.basis, amountCents: e.amount_cents, approvedAt: e.approved_at, enteredAt: e.entered_at,
+    })));
+  }
+  return out;
+}
+
+function parseMiles(v: unknown): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 && n < 5000 ? Math.round(n * 10) / 10 : undefined;
 }
 
 const str = (v: unknown, max = 500): string | undefined => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
@@ -193,6 +222,24 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
   }
   if (b.sortOrder !== undefined && Number.isInteger(b.sortOrder)) set("sort_order", b.sortOrder);
 
+  // Expense review fields: scheduler only, and frozen once approved.
+  const reviewKeys = ["moody", "miles", "lotTakenTo", "reportedCustomerName", "amountOverride"];
+  if (reviewKeys.some((k) => b[k] !== undefined)) {
+    if (!permissionsFor(user.role).approveExpenses) return c.json({ error: "Only the scheduler can change expense details." }, 403);
+    if (job.stage === "approved") return c.json({ error: "This job is approved; its expense is locked." }, 400);
+    if (typeof b.moody === "boolean") { set("moody", b.moody ? 1 : 0); events.push(["review", b.moody ? "Marked Moody (10%)" : "Unmarked Moody"]); }
+    const miles = parseMiles(b.miles);
+    if (b.miles !== undefined) { if (miles === undefined) return c.json({ error: "Miles must be a number." }, 400); set("miles", miles); }
+    const lot = str(b.lotTakenTo, 120); if (lot !== undefined) set("lot_taken_to", lot);
+    const rn = str(b.reportedCustomerName, 120); if (rn !== undefined) set("reported_customer_name", rn);
+    if (b.amountOverride !== undefined) {
+      const amt = parseBalance(b.amountOverride);
+      if (amt === undefined) return c.json({ error: "Amount must be dollars." }, 400);
+      set("amount_override_cents", amt);
+      events.push(["review", amt === null ? "Cleared custom amount" : `Set expense amount to $${(amt / 100).toFixed(2)}`]);
+    }
+  }
+
   let driverId = job.driver_id;
   if (b.driverId !== undefined) {
     if (b.driverId === null || b.driverId === "") driverId = null;
@@ -298,6 +345,15 @@ jobRoutes.patch("/:id/work", requirePermission("submitJobs"), async (c) => {
   }
   const notes = str(b.driverNotes, 4000);
   if (notes !== undefined) { sets.push("driver_notes = ?"); vals.push(notes); }
+  const rn = str(b.reportedCustomerName, 120);
+  if (rn !== undefined) { sets.push("reported_customer_name = ?"); vals.push(rn); }
+  const miles = parseMiles(b.miles);
+  if (b.miles !== undefined) {
+    if (miles === undefined) return c.json({ error: "Miles must be a number." }, 400);
+    sets.push("miles = ?"); vals.push(miles);
+  }
+  const lot = str(b.lotTakenTo, 120);
+  if (lot !== undefined) { sets.push("lot_taken_to = ?"); vals.push(lot); }
   if (!sets.length) return c.json({ error: "Nothing to change." }, 400);
   sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
   await c.env.DB.prepare(`UPDATE jobs SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, job.id).run();
@@ -338,6 +394,8 @@ jobRoutes.post("/:id/submit", requirePermission("submitJobs"), async (c) => {
   const job = await getJob(c.env.DB, c.req.param("id"));
   if (!job || !canSee(user, job)) return c.json({ error: "Job not found." }, 404);
   if (job.stage !== "scheduled" || !canWork(user, job)) return c.json({ error: "This job was already submitted." }, 400);
+  const missing = missingDriverAnswers({ jobType: job.job_type as JobType, reportedCustomerName: job.reported_customer_name, miles: job.miles, lotTakenTo: job.lot_taken_to });
+  if (missing.length) return c.json({ error: `Fill in: ${missing.join(", ")}.`, missing }, 400);
   await c.env.DB.prepare(
     "UPDATE jobs SET stage = 'submitted', submitted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND stage = 'scheduled'",
   )
@@ -353,8 +411,21 @@ jobRoutes.post("/:id/approve", requirePermission("approveExpenses"), async (c) =
   const job = await getJob(c.env.DB, c.req.param("id"));
   if (!job) return c.json({ error: "Job not found." }, 404);
   if (job.stage !== "submitted") return c.json({ error: "Only submitted jobs can be approved." }, 400);
-  await c.env.DB.prepare("UPDATE jobs SET stage = 'approved', approved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?").bind(job.id).run();
-  await logEvent(c.env.DB, job.id, c.get("user").id, "approved", "Approved");
+  const b = await c.req.json().catch(() => ({}));
+  const draft = draftForJob(job, await loadPricing(c.env.DB));
+  if (!draft.lines.length) return c.json({ error: "There's no amount to approve yet. Fix the problems or type an amount.", problems: draft.problems }, 400);
+  if (draft.problems.length && !b.force) return c.json({ error: "Check these first, or approve anyway.", problems: draft.problems }, 409);
+  const userId = c.get("user").id;
+  const res = await c.env.DB.prepare("UPDATE jobs SET stage = 'approved', approved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND stage = 'submitted'").bind(job.id).run();
+  if (!res.meta.changes) return c.json({ error: "Already approved." }, 409);
+  await c.env.DB.batch(
+    draft.lines.map((l) =>
+      c.env.DB.prepare("INSERT INTO expenses (id, job_id, kind, description, basis, amount_cents, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(newId(), job.id, l.kind, l.description, l.basis, l.amountCents, userId),
+    ),
+  );
+  const total = draft.lines.reduce((t, l) => t + l.amountCents, 0);
+  await logEvent(c.env.DB, job.id, userId, "approved", `Approved $${(total / 100).toFixed(2)}${draft.lines.length > 1 ? ` (${draft.lines.length} expenses)` : ""}`);
   return respondJob(c, (await getJob(c.env.DB, job.id))!, true);
 });
 
@@ -371,6 +442,17 @@ jobRoutes.post("/:id/send-back", requirePermission("approveExpenses"), async (c)
     .run();
   await logEvent(c.env.DB, job.id, c.get("user").id, "sent_back", reason ? `Sent back to driver: ${reason}` : "Sent back to driver");
   return respondJob(c, (await getJob(c.env.DB, job.id))!, true);
+});
+
+jobRoutes.post("/:id/entered", requirePermission("approveExpenses"), async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const entered = b.entered !== false;
+  const res = await c.env.DB.prepare(
+    "UPDATE expenses SET entered_at = CASE WHEN ? THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') ELSE NULL END WHERE job_id = ?",
+  ).bind(entered ? 1 : 0, c.req.param("id")).run();
+  if (!res.meta.changes) return c.json({ error: "No approved expenses on this job." }, 404);
+  await logEvent(c.env.DB, c.req.param("id"), c.get("user").id, "entered", entered ? "Marked entered in NetSuite" : "Unmarked entered in NetSuite");
+  return c.json({ ok: true });
 });
 
 // ---------- Lists ----------
@@ -408,13 +490,22 @@ listRoutes.get("/my/log", async (c) => {
 listRoutes.get("/pending", requirePermission("viewPendingExpenses"), async (c) => {
   const { results } = await c.env.DB.prepare(`${JOB_SELECT} WHERE j.stage = 'submitted' ORDER BY j.submitted_at`).all<JobRow>();
   const photos = await photosForJobs(c.env.DB, results.map((j) => j.id));
-  return c.json(results.map((j) => toOfficeJob(j, photos)));
+  const pricing = await loadPricing(c.env.DB);
+  return c.json(results.map((j) => ({ ...toOfficeJob(j, photos), draft: draftForJob(j, pricing) })));
 });
 
 listRoutes.get("/completed", requirePermission("viewFinancial"), async (c) => {
-  const { results } = await c.env.DB.prepare(`${JOB_SELECT} WHERE j.stage = 'approved' ORDER BY j.approved_at DESC LIMIT 200`).all<JobRow>();
-  const photos = await photosForJobs(c.env.DB, results.map((j) => j.id));
-  return c.json(results.map((j) => toOfficeJob(j, photos)));
+  const { results } = await c.env.DB.prepare(`${JOB_SELECT} WHERE j.stage = 'approved' ORDER BY j.approved_at DESC LIMIT 500`).all<JobRow>();
+  const [photos, expenses] = await Promise.all([photosForJobs(c.env.DB, results.map((j) => j.id)), expensesFor(c.env.DB, results.map((j) => j.id))]);
+  return c.json(results.map((j) => ({ ...toOfficeJob(j, photos), expenses: expenses.filter((e) => e.jobId === j.id) })));
+});
+
+/** Lot names used before, to suggest when a driver fills in "lot taken to". */
+listRoutes.get("/lots", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT lot_taken_to AS name, COUNT(*) AS n FROM jobs WHERE lot_taken_to != '' GROUP BY lot_taken_to COLLATE NOCASE ORDER BY n DESC LIMIT 30",
+  ).all<{ name: string }>();
+  return c.json(results.map((r) => r.name));
 });
 
 // ---------- Photos ----------

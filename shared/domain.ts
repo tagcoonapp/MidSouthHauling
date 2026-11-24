@@ -9,25 +9,36 @@ export const ROLE_LABELS: Record<Role, string> = {
   owner: "Owner",
 };
 
-// Order matters: the most frequent types come first in every dropdown.
-export const JOB_TYPES = [
-  "off_lot_delivery",
-  "shop_build",
-  "private_move",
-  "inventory",
-  "repo",
-  "attempted_repo",
-] as const;
+// The 5 pay types. Drivers pick one when they finish a job; it decides how the expense is priced.
+export const JOB_TYPES = ["new", "used", "shop_build", "repo", "attempted_repo"] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
 export const JOB_TYPE_LABELS: Record<JobType, string> = {
-  off_lot_delivery: "Off Lot Delivery",
+  new: "New",
+  used: "Used",
   shop_build: "Shop Build",
-  private_move: "Private Move",
-  inventory: "Inventory",
   repo: "Repo",
   attempted_repo: "Attempted Repo",
 };
+
+/** Which follow-up questions the driver must answer for each type. */
+export const DRIVER_QUESTIONS: Record<JobType, { miles: boolean; lot: boolean }> = {
+  new: { miles: true, lot: false },
+  used: { miles: true, lot: false },
+  shop_build: { miles: true, lot: false },
+  repo: { miles: true, lot: true },
+  attempted_repo: { miles: false, lot: false },
+};
+
+/** What's still missing before a driver can submit, in plain words. */
+export function missingDriverAnswers(j: { jobType: JobType; reportedCustomerName: string; miles: number | null; lotTakenTo: string }): string[] {
+  const q = DRIVER_QUESTIONS[j.jobType];
+  const out: string[] = [];
+  if (!j.reportedCustomerName.trim()) out.push("customer name");
+  if (q.miles && (j.miles === null || !(j.miles >= 0))) out.push("miles");
+  if (q.lot && !j.lotTakenTo.trim()) out.push("lot taken to");
+  return out;
+}
 
 export const CALL_STATUSES = ["not_called", "attempted", "waiting", "confirmed"] as const;
 export type CallStatus = (typeof CALL_STATUSES)[number];
@@ -138,6 +149,9 @@ export interface DriverJob {
   hasPdf: boolean;
   photos: Photo[];
   submittedAt: string | null;
+  reportedCustomerName: string;
+  miles: number | null;
+  lotTakenTo: string;
 }
 
 export interface JobEvent {
@@ -156,5 +170,21 @@ export interface OfficeJob extends DriverJob {
   driverColor: string | null;
   callAttempts: number;
   createdAt: string;
+  moody: boolean;
+  amountOverrideCents: number | null;
   events?: JobEvent[];
+  /** Live expense draft (submitted jobs, scheduler only). */
+  draft?: import("./pricing").ExpenseDraft & { nameMatches: boolean | null };
+  /** Expenses frozen at approval. */
+  expenses?: ApprovedExpense[];
+}
+
+export interface ApprovedExpense {
+  id: string;
+  kind: "main" | "fuel";
+  description: string;
+  basis: string;
+  amountCents: number;
+  approvedAt: string;
+  enteredAt: string | null;
 }

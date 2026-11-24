@@ -11,6 +11,7 @@ import { Pending } from "./pages/Pending";
 import { Completed } from "./pages/Completed";
 import { Team } from "./pages/Team";
 import { Account } from "./pages/Account";
+import { Pricing } from "./pages/Pricing";
 
 export function useMe() {
   return useQuery({
@@ -59,6 +60,7 @@ export function App() {
         <Route path="/" element={<Board me={user} />} />
         {user.permissions.viewPendingExpenses && <Route path="/pending" element={<Pending />} />}
         <Route path="/completed" element={<Completed />} />
+        {user.permissions.approveExpenses && <Route path="/pricing" element={<Pricing />} />}
         {user.permissions.manageTeam && <Route path="/team" element={<Team me={user} />} />}
         <Route path="/account" element={<Account me={user} />} />
         <Route path="*" element={<Navigate to="/" replace />} />

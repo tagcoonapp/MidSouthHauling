@@ -198,7 +198,7 @@ function AssignModal({ job, date, drivers, onClose, onSave }: {
 
 function NewJobModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const [f, setF] = useState({ customerName: "", phone: "", address: "", city: "", serial: "", building: "", balance: "", jobType: "off_lot_delivery" as JobType, officeNotes: "" });
+  const [f, setF] = useState({ customerName: "", phone: "", address: "", city: "", serial: "", building: "", balance: "", jobType: "new" as JobType, officeNotes: "" });
   const [err, setErr] = useState<unknown>(null);
   const [dupe, setDupe] = useState(false);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
