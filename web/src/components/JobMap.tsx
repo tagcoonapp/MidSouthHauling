@@ -21,11 +21,13 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
  * The map grabs mouse-downs for panning (so the browser's drag-and-drop never starts), so pins use their own
  * pointer drag: a label follows the pointer and the drop goes to whatever [data-drop] element is under it.
  */
-export function JobMap({ jobs, onOpen, onPinDrop, onPinHover }: {
+export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize }: {
   jobs: OfficeJob[];
   onOpen: (id: string) => void;
   onPinDrop?: (jobId: string, target: string) => void;
   onPinHover?: (target: string | null) => void;
+  big?: boolean;
+  onToggleSize?: () => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -136,7 +138,10 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover }: {
   return (
     <section className="map-card card">
       <div className="map-head">
-        <b>Pipeline map {onPinDrop && <span className="muted small" style={{ fontWeight: 400 }}>· drag a pin onto a day to schedule it</span>}</b>
+        <div className="row-wrap" style={{ gap: 8 }}>
+          <b>Pipeline map {onPinDrop && <span className="muted small" style={{ fontWeight: 400 }}>· drag a pin onto a day to schedule it</span>}</b>
+          {onToggleSize && <button className="btn small" onClick={onToggleSize}>{big ? "⤡ Smaller map" : "⤢ Bigger map"}</button>}
+        </div>
         <div className="legend">
           {(Object.keys(MAP_COLORS) as MapCategory[]).map((c) => (
             <span key={c}><i className="dot" style={{ background: MAP_COLORS[c] }} /> {LABELS[c]}</span>

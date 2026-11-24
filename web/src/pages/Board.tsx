@@ -32,6 +32,8 @@ export function Board({ me }: { me: Me }) {
   const [err, setErr] = useState<unknown>(null);
   const [menu, setMenu] = useState<{ job: OfficeJob; x: number; y: number } | null>(null);
   const [search, setSearch] = useState("");
+  const [mapBig, setMapBig] = useState(() => { try { return localStorage.getItem("mapBig") === "1"; } catch { return false; } });
+  const toggleMap = () => setMapBig((v) => { try { localStorage.setItem("mapBig", v ? "0" : "1"); } catch { /* private mode */ } return !v; });
   const navigate = useNavigate();
 
   const first = useQuery({ queryKey: ["board-today"], queryFn: () => api.get<BoardData>("/jobs/board"), staleTime: 300_000 });
@@ -150,7 +152,7 @@ export function Board({ me }: { me: Me }) {
           ))}
         </section>
 
-        <div className="right-col">
+        <div className={`right-col${mapBig ? " map-big" : ""}`}>
         <div className="cal">
           {days.map((d) => {
             const dayJobs = scheduled.filter((j) => j.scheduledDate === d);
@@ -187,7 +189,7 @@ export function Board({ me }: { me: Me }) {
             );
           })}
         </div>
-        <JobMap jobs={pipeline} onOpen={setOpenId} onPinDrop={canEdit ? placeJob : undefined} onPinHover={setDropTarget} />
+        <JobMap jobs={pipeline} onOpen={setOpenId} onPinDrop={canEdit ? placeJob : undefined} onPinHover={setDropTarget} big={mapBig} onToggleSize={toggleMap} />
         </div>
       </div>
 

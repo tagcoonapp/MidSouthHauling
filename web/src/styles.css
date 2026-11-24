@@ -318,3 +318,11 @@ code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.
 .map-pin { touch-action: none; }
 .pin-ghost { position: fixed; z-index: 3000; pointer-events: none; background: #fff; border: 1px solid var(--line); border-left: 4px solid; border-radius: 8px; padding: 6px 10px; font-weight: 700; font-size: 13px; box-shadow: 0 8px 20px #0003; white-space: nowrap; }
 .jt-inv_haul { background: #ecfeff; color: #155e75; }
+
+/* Bigger map: the calendar shrinks to a strip (still a drop target), the map takes the rest. */
+@media (min-width: 901px) {
+  .right-col.map-big .cal { flex: 0 0 170px; }
+  .right-col.map-big .map-card { flex: 1; }
+  .right-col.map-big .ev { padding: 5px 7px; }
+}
+@media (max-width: 900px) { .right-col.map-big .map-canvas { height: 560px; } }
