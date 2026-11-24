@@ -14,6 +14,7 @@ export function Pending() {
     // While Claude is reading someone's photos, check back every few seconds.
     refetchInterval: (query) => ((query.state.data as OfficeJob[] | undefined)?.some((j) => j.photoRead.status === "reading") ? 4000 : 60_000),
   });
+  const [openId, setOpenId] = useState<string | null>(null);
   if (!q.data) return <div className="muted">Loading…</div>;
   const total = q.data.reduce((t, j) => t + (j.draft?.lines.reduce((s, l) => s + l.amountCents, 0) ?? 0), 0);
   return (
@@ -26,10 +27,56 @@ export function Pending() {
         {q.data.length > 0 && <div className="card pad"><div className="muted small">Total if all approved</div><b style={{ fontSize: 20 }}>{money(total) === "Paid" ? "$0.00" : money(total)}</b></div>}
       </div>
       {q.data.length === 0 && <div className="card empty-state">Nothing waiting. Submitted jobs show up here.</div>}
-      <div className="pending-list">
-        {q.data.map((j) => <PendingCard key={j.id} job={j} />)}
+      <div className="pending-rows">
+        {q.data.map((j) => (
+          <div key={j.id} className={`card pending-item${openId === j.id ? " open" : ""}`}>
+            <PendingRow job={j} open={openId === j.id} onToggle={() => setOpenId(openId === j.id ? null : j.id)} />
+            {openId === j.id && <PendingCard job={j} />}
+          </div>
+        ))}
       </div>
     </div>
+  );
+}
+
+/** Everything that needs a look before approving, without duplicates. */
+export function flagsFor(j: OfficeJob): string[] {
+  const d = j.draft;
+  if (!d) return [];
+  const out = [
+    ...d.problems.filter((p) => !p.startsWith("Photos: ")),
+    ...d.photoChecks.filter((c) => !c.ok).map((c) => c.text),
+  ];
+  if (j.photoRead.status === "error" || j.photoRead.status === "unavailable") out.push(j.photoRead.error ?? "Photos couldn't be read.");
+  return [...new Set(out)];
+}
+
+function PendingRow({ job: j, open, onToggle }: { job: OfficeJob; open: boolean; onToggle: () => void }) {
+  const d = j.draft!;
+  const flags = flagsFor(j);
+  const total = d.lines.reduce((t, l) => t + l.amountCents, 0);
+  const reading = j.photoRead.status === "reading";
+  return (
+    <button className="pending-row" onClick={onToggle} aria-expanded={open}>
+      <div className="thumb">{j.photos[0] ? <img src={j.photos[0].url} alt="" loading="lazy" /> : <span>No photo</span>}</div>
+      <div className="pr-main">
+        <div className="pr-name">{j.customerName} <JobTypePill type={j.jobType} /></div>
+        <div className="muted small">
+          <i className="dot" style={{ background: j.driverColor ?? "#999" }} /> {j.driverName}
+          {j.scheduledDate ? ` · ${fmtDay(j.scheduledDate)}` : ""} · {j.photos.length} photo{j.photos.length === 1 ? "" : "s"}
+        </div>
+        <div className="pr-flag">
+          {reading ? <span className="flag reading">⏳ Reading photos…</span>
+          : flags.length ? <span className="flag warn" title={flags.join("\n")}>⚠️ {flags.length} check{flags.length === 1 ? "" : "s"}: {flags[0]}</span>
+          : <span className="flag ok">✅ All clear</span>}
+        </div>
+      </div>
+      <div className="pr-amt">
+        <b>{j.jobType === "private_move" ? "Record only" : d.lines.length ? (total / 100).toLocaleString("en-US", { style: "currency", currency: "USD" }) : "No amount"}</b>
+        {d.lines.length > 1 && <div className="muted small">{d.lines.length} expenses</div>}
+        <div className="muted small">{open ? "Close ▲" : "Review ▼"}</div>
+      </div>
+    </button>
   );
 }
 
@@ -76,16 +123,8 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
   const showMiles = j.jobType === "shop_build" || j.jobType === "repo" || j.jobType === "new" || j.jobType === "used";
 
   return (
-    <article className="card pad pending-card">
-      <div className="row">
-        <div>
-          <h2>{j.customerName} · <JobTypePill type={j.jobType} /></h2>
-          <div className="muted small">
-            <i className="dot" style={{ background: j.driverColor ?? "#999" }} /> {j.driverName} · submitted {fmtDateTime(j.submittedAt!)}
-            {j.scheduledDate ? ` · job date ${fmtDay(j.scheduledDate)}` : ""}
-          </div>
-        </div>
-      </div>
+    <article className="pad pending-card">
+      <div className="muted small">Submitted {fmtDateTime(j.submittedAt!)}{j.scheduledDate ? ` · job date ${fmtDay(j.scheduledDate)}` : ""}</div>
 
       <div className="pending-body">
         <div>
