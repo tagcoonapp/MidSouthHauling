@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { DRIVER_QUESTIONS, JOB_TYPES, PAYMENT_LABELS, PAYMENT_METHODS, missingDriverAnswers, type DriverJob, type JobType, type PaymentMethod } from "../../../shared/domain";
 import { api } from "../api";
-import { ErrorText, PhotoGrid, StagePill } from "../components/bits";
+import { ErrorText, JobTypePill, PhotoGrid, StagePill } from "../components/bits";
 import { fmtDay, jobTypeLabel, mapsUrl, addressLine } from "../util";
 
 type WorkBody = { jobType?: JobType; driverNotes?: string; reportedCustomerName?: string; miles?: number | null; lotTakenTo?: string; collected?: string | null; collectedMethod?: PaymentMethod | null; collectedRef?: string; keptPaidInFull?: boolean };
@@ -30,6 +30,8 @@ export function DriverJobPage() {
   const q = useQuery({ queryKey: ["job", id], queryFn: () => api.get<DriverJob>(`/jobs/${id}`) });
   const lots = useQuery({ queryKey: ["lots"], queryFn: () => api.get<string[]>("/lots"), staleTime: 300_000 });
   const [a, setA] = useState<Answers>({ notes: "", name: "", miles: "", lot: "", collected: "", ref: "" });
+  // Step 1 shows the job's info; "Send expense" opens step 2 (questions, photos, notes, submit).
+  const [step, setStep] = useState<"info" | "expense">("info");
   const [saved, setSaved] = useState<Answers>(a);
 
   useEffect(() => {
@@ -74,36 +76,69 @@ export function DriverJobPage() {
   return (
     <div className="phone-app">
       <header className="ptop">
-        <Link to="/" className="muted-light small">‹ Back</Link>
+        {step === "info" ? <Link to="/" className="muted-light small">‹ Back to my jobs</Link> : <button className="link-light back-btn" onClick={() => { setStep("info"); window.scrollTo(0, 0); }}>‹ Back to job info</button>}
         {"balanceCents" in job && <div className="office-note">You're filling in the driver's steps for this job.</div>}
         <h1 style={{ marginTop: 6 }}>{job.customerName}</h1>
-        <div className="muted-light small" style={{ marginTop: 2 }}>{addressLine(job.address, job.city)}</div>
-        <div className="row-wrap" style={{ marginTop: 12 }}>
-          {tel && <a className="btn ghost-light" href={`tel:${tel}`}>📞 Call</a>}
-          {(job.address || job.city) && <a className="btn ghost-light" href={mapsUrl(job.address, job.city)} target="_blank" rel="noreferrer">🧭 Directions</a>}
-          {job.hasPdf && <a className="btn ghost-light" href={`/api/jobs/${job.id}/pdf`} target="_blank" rel="noreferrer">📄 Customer PDF</a>}
+        <div className="row-wrap" style={{ marginTop: 6 }}>
+          <JobTypePill type={job.jobType} />
+          <StagePill stage={job.stage} />
+          {job.scheduledDate && <span className="muted-light small">{fmtDay(job.scheduledDate)}{job.scheduledTime ? ` · ${job.scheduledTime}` : ""}</span>}
         </div>
       </header>
 
-      <div className="card pad" style={{ margin: 14 }}>
-        <dl className="facts">
-          {job.building && <><dt>Building</dt><dd>{job.building}</dd></>}
-          {job.serial && <><dt>Serial #</dt><dd>{job.serial}</dd></>}
-          {job.scheduledDate && <><dt>Scheduled</dt><dd>{fmtDay(job.scheduledDate)}{job.scheduledTime ? ` · ${job.scheduledTime}` : ""}</dd></>}
-          {job.phone && <><dt>Phone</dt><dd>{job.phone}</dd></>}
-          <dt>Status</dt><dd><StagePill stage={job.stage} /></dd>
-        </dl>
-        {job.officeNotes && <div className="note-box"><b>From the office:</b> {job.officeNotes}</div>}
-        {job.tloNotes.trim() && (
-          <div className="note-box tlo">
-            <b>Other addresses (TLO):</b>
-            {job.tloNotes.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l, i) => (
-              <a key={i} className="map-link big" href={mapsUrl(l, "")} target="_blank" rel="noreferrer">📍 {l}</a>
-            ))}
+      {step === "info" && (
+        <>
+          <div className="info-list">
+            <div className="info-row">
+              <div className="info-label">Serial number</div>
+              <div className="info-value mono">{job.serial || <span className="muted">Not listed</span>}</div>
+            </div>
+            <div className="info-row">
+              <div className="info-label">Phone number</div>
+              <div className="info-value">{tel ? <a href={`tel:${tel}`}>📞 {job.phone}</a> : <span className="muted">Not listed</span>}</div>
+            </div>
+            <div className={`info-row${job.collectCents ? " due" : ""}`}>
+              <div className="info-label">Balance due</div>
+              <div className="info-value">{usd(job.collectCents ?? 0)}{job.collectCents ? <span className="info-hint">Collect this from the customer</span> : null}</div>
+            </div>
+            <div className="info-row">
+              <div className="info-label">Address</div>
+              <div className="info-value">{job.address || job.city ? <a href={mapsUrl(job.address, job.city)} target="_blank" rel="noreferrer">📍 {addressLine(job.address, job.city)}</a> : <span className="muted">Not listed</span>}</div>
+            </div>
+            {job.building && (
+              <div className="info-row">
+                <div className="info-label">Building</div>
+                <div className="info-value">{job.building}</div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
+          {(job.officeNotes || job.tloNotes.trim() || job.hasPdf) && (
+            <div className="card pad" style={{ margin: "0 14px 14px" }}>
+              {job.officeNotes && <div className="note-box" style={{ marginTop: 0 }}><b>From the office:</b> {job.officeNotes}</div>}
+              {job.tloNotes.trim() && (
+                <div className="note-box tlo">
+                  <b>Other addresses (TLO):</b>
+                  {job.tloNotes.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l, i) => (
+                    <a key={i} className="map-link big" href={mapsUrl(l, "")} target="_blank" rel="noreferrer">📍 {l}</a>
+                  ))}
+                </div>
+              )}
+              {job.hasPdf && <a className="btn" style={{ marginTop: 10 }} href={`/api/jobs/${job.id}/pdf`} target="_blank" rel="noreferrer">📄 Customer PDF</a>}
+            </div>
+          )}
+
+          <div className="pad-x" style={{ paddingBottom: 28 }}>
+            <button className="btn pri big" style={{ width: "100%" }} onClick={() => { setStep("expense"); window.scrollTo(0, 0); }}>
+              {job.stage === "scheduled" ? "Send expense ›" : job.stage === "submitted" ? "View or fix expense ›" : "View expense ›"}
+            </button>
+            {job.stage === "submitted" && <div className="ok-box mt">✓ Submitted. Waiting for the office to approve.</div>}
+            {job.stage === "approved" && <div className="ok-box mt">✓ Approved by the office.</div>}
+          </div>
+        </>
+      )}
+
+      {step === "expense" && (<>
       {job.collectCents !== null && (
         <div className="collect-banner">💵 Collect <b>{usd(job.collectCents)}</b> from the customer</div>
       )}
@@ -211,6 +246,7 @@ export function DriverJobPage() {
         )}
         {job.stage === "approved" && <div className="ok-box">✓ Approved by the office.</div>}
       </div>
+      </>)}
     </div>
   );
 }
