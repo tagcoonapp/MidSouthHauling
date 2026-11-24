@@ -269,3 +269,12 @@ code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.
 @media (max-width: 600px) { .pending-row .thumb { width: 48px; height: 48px; } .pr-amt b { font-size: 15px; } }
 .steps ol { margin-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14.5px; }
 .pipe .row { flex-wrap: wrap; }
+
+/* Desktop schedule: the pipeline scrolls on its own; the calendar stays put on screen. */
+@media (min-width: 901px) {
+  .board { height: calc(100vh - 175px); min-height: 420px; align-items: stretch; }
+  .pipe { overflow-y: auto; min-height: 0; padding-right: 8px; }
+  .pipe > .row:first-child { position: sticky; top: -4px; background: var(--bg); z-index: 2; padding: 4px 0 8px; margin-bottom: 4px !important; }
+  .cal { min-height: 0; align-items: stretch; }
+  .day { min-height: 0; overflow-y: auto; }
+}
