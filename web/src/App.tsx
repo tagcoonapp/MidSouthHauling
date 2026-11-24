@@ -12,6 +12,7 @@ import { Completed } from "./pages/Completed";
 import { Team } from "./pages/Team";
 import { Account } from "./pages/Account";
 import { Pricing } from "./pages/Pricing";
+import { ImportPage } from "./pages/Import";
 
 export function useMe() {
   return useQuery({
@@ -60,6 +61,7 @@ export function App() {
         <Route path="/" element={<Board me={user} />} />
         {user.permissions.viewPendingExpenses && <Route path="/pending" element={<Pending />} />}
         <Route path="/completed" element={<Completed />} />
+        {user.permissions.editSchedule && <Route path="/import" element={<ImportPage />} />}
         {user.permissions.approveExpenses && <Route path="/pricing" element={<Pricing />} />}
         {user.permissions.manageTeam && <Route path="/team" element={<Team me={user} />} />}
         {user.permissions.submitJobs && <Route path="/job/:id" element={<DriverJobPage />} />}

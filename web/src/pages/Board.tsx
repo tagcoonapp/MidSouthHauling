@@ -4,6 +4,8 @@ import { CALL_STATUSES, JOB_TYPES, type JobType, type Me, type OfficeJob, type T
 import { api } from "../api";
 import { CallPill, ErrorText, JobTypePill, Modal } from "../components/bits";
 import { JobDrawer } from "./JobDrawer";
+import { copyImportInstructions } from "./Import";
+import { useNavigate } from "react-router-dom";
 import { addDays, fmtDay, jobTypeLabel, mapsUrl, money, weekStart } from "../util";
 
 interface BoardData {
@@ -26,6 +28,7 @@ export function Board({ me }: { me: Me }) {
   const [assign, setAssign] = useState<{ job: OfficeJob; date: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>(null);
+  const navigate = useNavigate();
 
   const first = useQuery({ queryKey: ["board-today"], queryFn: () => api.get<BoardData>("/jobs/board"), staleTime: 300_000 });
   const from = anchor ?? (first.data ? weekStart(first.data.today) : null);
@@ -105,7 +108,18 @@ export function Board({ me }: { me: Me }) {
         <section className={`pipe${dropTarget === "pipeline" ? " drop" : ""}`} {...dropProps("pipeline")}>
           <div className="row" style={{ marginBottom: 10 }}>
             <h2>Pipeline <span className="muted">({pipeline.length})</span></h2>
-            {canEdit && <button className="btn small" onClick={() => setAdding(true)}>＋ Add job</button>}
+            {canEdit && (
+              <div className="row-wrap" style={{ gap: 6 }}>
+                <button
+                  className="btn small pri"
+                  title="Copies the instructions for Claude in Chrome and opens the import page"
+                  onClick={async () => { await copyImportInstructions().catch(() => {}); navigate("/import"); }}
+                >
+                  ⬇ Import from NetSuite
+                </button>
+                <button className="btn small" onClick={() => setAdding(true)}>＋ Add job</button>
+              </div>
+            )}
           </div>
           {pipeline.length === 0 && <div className="muted small">No jobs waiting. New jobs land here.</div>}
           {pipeline.map((j) => (

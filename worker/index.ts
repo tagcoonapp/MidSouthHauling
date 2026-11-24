@@ -5,6 +5,7 @@ import { authRoutes } from "./routes/auth";
 import { jobRoutes, listRoutes, photoRoutes } from "./routes/jobs";
 import { teamRoutes } from "./routes/team";
 import { pricingRoutes } from "./routes/pricing";
+import { importRoutes } from "./routes/import";
 import { serveStatic } from "./static";
 import type { Env } from "./env";
 
@@ -24,6 +25,7 @@ app.use("*", (c, next) => (PUBLIC.has(c.req.path) ? next() : requireUser(c, next
 app.route("/", authRoutes);
 app.route("/team", teamRoutes);
 app.route("/pricing", pricingRoutes);
+app.route("/import", importRoutes);
 app.route("/jobs", jobRoutes);
 app.route("/photos", photoRoutes);
 app.route("/", listRoutes);
