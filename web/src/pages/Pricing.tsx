@@ -36,7 +36,7 @@ function Rules({ data, onSaved }: { data: PricingData; onSaved: (d: PricingData)
     <section className="card pad">
       <h2>Rules</h2>
       <ul className="rules">
-        <li><b>New:</b> {PERCENT_RULES.new}% of list price ({PERCENT_RULES.newMoody}% if it came from the Moody lot)</li>
+        <li><b>New:</b> {PERCENT_RULES.new}% of list price (from the Moody lot: same as Shop Build, by miles)</li>
         <li><b>Used:</b> {PERCENT_RULES.used}% of list price</li>
         <li><b>Shop Build:</b> {PERCENT_RULES.shopBuildBase}% for 0–50 mi, +1% for every 50 mi after (50.1–100 = 11%, 100.1–150 = 12% …)</li>
         <li><b>Repo:</b> by building width and miles (table →). 14' and 16' wide: % of list price + escort fees</li>
@@ -139,7 +139,7 @@ function PriceSheet({ data, onSaved }: { data: PricingData; onSaved: (d: Pricing
           <input className="mt" placeholder="Search, e.g. CC 12x" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 260 }} />
           <div className="table-wrap mt" style={{ maxHeight: 420, overflowY: "auto" }}>
             <table>
-              <thead><tr><th>Style</th><th>Size</th><th>List price</th><th>New 5%</th><th>New Moody 10%</th></tr></thead>
+              <thead><tr><th>Style</th><th>Size</th><th>List price</th><th>New / Used 5%</th><th>Shop Build &amp; Moody 0–50 mi (10%)</th></tr></thead>
               <tbody>
                 {rows.map((p) => (
                   <tr key={`${p.style}-${p.width}-${p.length}`}>

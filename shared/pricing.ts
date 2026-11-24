@@ -122,7 +122,7 @@ export function draftExpenses(input: ExpenseInput, prices: PriceRow[], repoRates
   const name = input.customerName.trim().toUpperCase();
   const serialInfo = parseSerial(input.serial);
   const needsPrice = input.jobType === "new" || input.jobType === "used" || input.jobType === "shop_build";
-  const needsMiles = input.jobType === "shop_build" || input.jobType === "repo";
+  const needsMiles = input.jobType === "shop_build" || input.jobType === "repo" || (input.jobType === "new" && input.moody);
 
   const needsSerial = input.jobType !== "attempted_repo" && input.jobType !== "private_move";
   if (!input.serial.trim() && needsSerial) problems.push("No serial number on this job.");
@@ -145,12 +145,15 @@ export function draftExpenses(input: ExpenseInput, prices: PriceRow[], repoRates
     case "new":
     case "used": {
       if (listPriceCents === null) break;
-      const pct = input.jobType === "used" ? PERCENT_RULES.used : input.moody ? PERCENT_RULES.newMoody : PERCENT_RULES.new;
+      // A New building from the Moody lot pays like a shop build: 10% for 0–50 mi, +1% per 50 mi after.
+      const moody = input.jobType === "new" && input.moody;
+      if (moody && input.miles === null) break; // "Miles are missing" is already flagged
+      const pct = input.jobType === "used" ? PERCENT_RULES.used : moody ? shopBuildPercent(input.miles!) : PERCENT_RULES.new;
       lines.push({
         kind: "main",
-        description: memo(),
+        description: memo(moody ? `MOODY · ${input.miles} mi` : ""),
         amountCents: pctOf(listPriceCents, pct),
-        basis: `${pct}% of ${usd(listPriceCents)} (${building} list price)${input.jobType === "new" && input.moody ? " · Moody" : ""}`,
+        basis: `${pct}% of ${usd(listPriceCents)} (${building} list price)${moody ? ` · Moody lot, ${input.miles} miles` : ""}`,
       });
       break;
     }

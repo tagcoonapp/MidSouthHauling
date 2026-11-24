@@ -31,7 +31,13 @@ describe("expense rules", () => {
     expect(d.lines[0]!.amountCents).toBe(48475);
     expect(d.lines[0]!.description).toContain("CC 12x32");
   });
-  it("new with Moody = 10%", () => expect(draft({ moody: true }).lines[0]!.amountCents).toBe(96950));
+  it("new from the Moody lot pays like a shop build, by miles", () => {
+    expect(draft({ moody: true, miles: 30 }).lines[0]!.amountCents).toBe(96950); // 10%
+    expect(draft({ moody: true, miles: 75 }).lines[0]!.amountCents).toBe(106645); // 11%
+    // Temples sample: LB 10x16 $4,595, Moody, 114 miles -> 12% = $551.40
+    expect(draft({ moody: true, miles: 114, serial: "ULB-305353-1016-092126" }).lines[0]!.amountCents).toBe(55140);
+    expect(draft({ moody: true, miles: null }).problems).toContain("Miles are missing.");
+  });
   it("used = 5% even if Moody", () => expect(draft({ jobType: "used", moody: true }).lines[0]!.amountCents).toBe(48475));
   it("shop build tiers by 50 miles, boundary stays low", () => {
     expect([0, 30, 50, 50.5, 100, 101, 150, 151, 260].map(shopBuildPercent)).toEqual([10, 10, 10, 11, 11, 12, 12, 13, 15]);

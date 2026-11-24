@@ -135,7 +135,7 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
             {j.jobType === "new" && (
               <label className="checkbox span2">
                 <input type="checkbox" checked={moody} onChange={(e) => { setMoody(e.target.checked); patch.mutate({ moody: e.target.checked }, { onError: () => setMoody(j.moody) }); }} />
-                <span>Building came from the <b>Moody</b> lot (10% instead of 5%)</span>
+                <span>Building came from the <b>Moody</b> lot (pays like a shop build: 10% for 0–50 mi, +1% per 50 mi)</span>
               </label>
             )}
             {j.jobType === "repo" && (d.serialInfo?.width ?? 0) >= 14 && (
