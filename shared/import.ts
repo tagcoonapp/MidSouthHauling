@@ -169,6 +169,7 @@ export function importInstructions(siteUrl: string): string {
 3. Open ${siteUrl}/import (I'm already signed in), paste everything into the big box as a JSON list, for example:
    [{"customerName":"William Temples","address":"670 Park Ave, Moody, AL 35004","city":"Moody","phone":"(205) 555-0100","serial":"ULB-305353-1016-092126","balance":0,"jobType":"New","lot":"Moody"},
     {"customerName":"Rex Owens","address":"77 Pine Hollow Ln, Decatur, AL 35603","city":"Decatur","phone":"(256) 555-0142","serial":"UCC-34543-1232-090356","balance":940,"jobType":"Repo","tloAddresses":["12 Oak St, Hartselle, AL 35640"]}]
-4. Click "Preview", then click the "Add" button to add the new jobs. Jobs already on the site are skipped automatically.
-5. Tell me how many jobs were added and list any you couldn't read.`;
+4. Click "Preview", then click the blue Add / Fill in button. New jobs are added; jobs already on the site only get missing
+   details filled in (address, phone, TLO addresses, balance).
+5. Tell me how many jobs were added or filled in, and list any you couldn't read.`;
 }

@@ -6,8 +6,8 @@ import { api } from "../api";
 import { ErrorText, JobTypePill } from "../components/bits";
 import { money, addressLine } from "../util";
 
-type PreviewRow = ImportRow & { status: "new" | "exists" | "duplicate_in_list"; reason: string };
-interface ImportResult { rows: PreviewRow[]; bad: { entry: string; reason: string }[]; newCount?: number; added?: number; skipped?: number }
+type PreviewRow = ImportRow & { status: "new" | "update" | "exists" | "duplicate_in_list"; reason: string };
+interface ImportResult { rows: PreviewRow[]; bad: { entry: string; reason: string }[]; newCount?: number; updateCount?: number; added?: number; updated?: number; skipped?: number }
 
 export function copyImportInstructions(): Promise<void> {
   return navigator.clipboard?.writeText(importInstructions(location.origin)) ?? Promise.resolve();
@@ -63,7 +63,7 @@ export function ImportPage() {
         <ErrorText error={preview.error || add.error} />
         {add.data && (
           <div className="ok-box mt">
-            ✓ Added {add.data.added} job{add.data.added === 1 ? "" : "s"} to the pipeline{add.data.skipped ? `, skipped ${add.data.skipped} already on the site` : ""}.{" "}
+            ✓ Added {add.data.added} job{add.data.added === 1 ? "" : "s"} to the pipeline{add.data.updated ? `, filled in missing info on ${add.data.updated}` : ""}{add.data.skipped ? `, skipped ${add.data.skipped} already complete` : ""}.{" "}
             <Link to="/">See the pipeline</Link>
           </div>
         )}
@@ -72,9 +72,9 @@ export function ImportPage() {
       {data && (
         <section className="card pad" style={{ marginTop: 14 }}>
           <div className="row">
-            <h2>{data.rows.length} job{data.rows.length === 1 ? "" : "s"} found · {data.newCount} new</h2>
-            <button className="btn pri" disabled={!data.newCount || add.isPending} onClick={() => add.mutate()}>
-              {add.isPending ? "Adding…" : `Add ${data.newCount} new job${data.newCount === 1 ? "" : "s"}`}
+            <h2>{data.rows.length} job{data.rows.length === 1 ? "" : "s"} found · {data.newCount} new{data.updateCount ? ` · ${data.updateCount} to fill in` : ""}</h2>
+            <button className="btn pri" disabled={(!data.newCount && !data.updateCount) || add.isPending} onClick={() => add.mutate()}>
+              {add.isPending ? "Saving…" : data.updateCount && data.newCount ? `Add ${data.newCount} new & fill in ${data.updateCount}` : data.updateCount ? `Fill in ${data.updateCount} job${data.updateCount === 1 ? "" : "s"}` : `Add ${data.newCount} new job${data.newCount === 1 ? "" : "s"}`}
             </button>
           </div>
           <div className="table-wrap mt">
@@ -82,8 +82,8 @@ export function ImportPage() {
               <thead><tr><th></th><th>Customer</th><th>Address</th><th>Phone</th><th>Serial #</th><th>Balance</th><th>Type</th></tr></thead>
               <tbody>
                 {data.rows.map((r, i) => (
-                  <tr key={i} style={{ opacity: r.status === "new" ? 1 : 0.5 }}>
-                    <td>{r.status === "new" ? <span className="pill st-scheduled">New</span> : <span className="pill st-pipeline" title={r.reason}>{r.reason}</span>}</td>
+                  <tr key={i} style={{ opacity: r.status === "new" || r.status === "update" ? 1 : 0.5 }}>
+                    <td>{r.status === "new" ? <span className="pill st-scheduled">New</span> : r.status === "update" ? <span className="pill st-submitted" title={r.reason}>{r.reason}</span> : <span className="pill st-pipeline" title={r.reason}>{r.reason}</span>}</td>
                     <td><b>{r.customerName}</b></td>
                     <td>{addressLine(r.address, r.city) || <span className="muted">—</span>}</td>
                     <td>{r.phone || <span className="muted">—</span>}</td>
