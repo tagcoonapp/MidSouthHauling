@@ -8,7 +8,10 @@ import {
   MAX_PHOTOS_PER_JOB,
   isCallStatus,
   isJobType,
+  amountToCollect,
+  isPaymentMethod,
   missingDriverAnswers,
+  NO_EXPENSE,
   permissionsFor,
   type ApprovedExpense,
   type JobEvent,
@@ -224,7 +227,7 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
   if (b.sortOrder !== undefined && Number.isInteger(b.sortOrder)) set("sort_order", b.sortOrder);
 
   // Expense review fields: scheduler only, and frozen once approved.
-  const reviewKeys = ["moody", "miles", "lotTakenTo", "reportedCustomerName", "amountOverride"];
+  const reviewKeys = ["moody", "miles", "lotTakenTo", "reportedCustomerName", "amountOverride", "collected", "collectedMethod", "escort", "keptPaidInFull"];
   if (reviewKeys.some((k) => b[k] !== undefined)) {
     if (!permissionsFor(user.role).approveExpenses) return c.json({ error: "Only the scheduler can change expense details." }, 403);
     if (job.stage === "approved") return c.json({ error: "This job is approved; its expense is locked." }, 400);
@@ -233,6 +236,21 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
     if (b.miles !== undefined) { if (miles === undefined) return c.json({ error: "Miles must be a number." }, 400); set("miles", miles); }
     const lot = str(b.lotTakenTo, 120); if (lot !== undefined) set("lot_taken_to", lot);
     const rn = str(b.reportedCustomerName, 120); if (rn !== undefined) set("reported_customer_name", rn);
+    if (b.collected !== undefined) {
+      const amt = parseBalance(b.collected);
+      if (amt === undefined) return c.json({ error: "Amount collected must be dollars." }, 400);
+      set("collected_cents", amt);
+    }
+    if (b.collectedMethod !== undefined) {
+      if (b.collectedMethod !== null && !isPaymentMethod(b.collectedMethod)) return c.json({ error: "Pick cash, check or card." }, 400);
+      set("collected_method", b.collectedMethod);
+    }
+    if (b.escort !== undefined) {
+      const amt = parseBalance(b.escort);
+      if (amt === undefined) return c.json({ error: "Escort fees must be dollars." }, 400);
+      set("escort_cents", amt);
+    }
+    if (typeof b.keptPaidInFull === "boolean") set("kept_paid_in_full", b.keptPaidInFull ? 1 : 0);
     if (b.amountOverride !== undefined) {
       const amt = parseBalance(b.amountOverride);
       if (amt === undefined) return c.json({ error: "Amount must be dollars." }, 400);
@@ -355,6 +373,21 @@ jobRoutes.patch("/:id/work", requirePermission("submitJobs"), async (c) => {
   }
   const lot = str(b.lotTakenTo, 120);
   if (lot !== undefined) { sets.push("lot_taken_to = ?"); vals.push(lot); }
+  if (b.collected !== undefined) {
+    const amt = parseBalance(b.collected);
+    if (amt === undefined) return c.json({ error: "Amount collected must be dollars." }, 400);
+    sets.push("collected_cents = ?"); vals.push(amt);
+  }
+  if (b.collectedMethod !== undefined) {
+    if (b.collectedMethod !== null && !isPaymentMethod(b.collectedMethod)) return c.json({ error: "Pick cash, check or card." }, 400);
+    sets.push("collected_method = ?"); vals.push(b.collectedMethod);
+  }
+  const ref = str(b.collectedRef, 80);
+  if (ref !== undefined) { sets.push("collected_ref = ?"); vals.push(ref); }
+  if (b.keptPaidInFull !== undefined) {
+    if (b.keptPaidInFull !== null && typeof b.keptPaidInFull !== "boolean") return c.json({ error: "Answer yes or no." }, 400);
+    sets.push("kept_paid_in_full = ?"); vals.push(b.keptPaidInFull === null ? null : b.keptPaidInFull ? 1 : 0);
+  }
   if (!sets.length) return c.json({ error: "Nothing to change." }, 400);
   sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
   await c.env.DB.prepare(`UPDATE jobs SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, job.id).run();
@@ -395,7 +428,11 @@ jobRoutes.post("/:id/submit", requirePermission("submitJobs"), async (c) => {
   const job = await getJob(c.env.DB, c.req.param("id"));
   if (!job || !canSee(user, job)) return c.json({ error: "Job not found." }, 404);
   if (job.stage !== "scheduled" || !canWork(user, job)) return c.json({ error: "This job was already submitted." }, 400);
-  const missing = missingDriverAnswers({ jobType: job.job_type as JobType, reportedCustomerName: job.reported_customer_name, miles: job.miles, lotTakenTo: job.lot_taken_to });
+  const missing = missingDriverAnswers({
+    jobType: job.job_type as JobType, reportedCustomerName: job.reported_customer_name, miles: job.miles, lotTakenTo: job.lot_taken_to,
+    collectCents: amountToCollect(job.job_type as JobType, job.balance_cents), collectedCents: job.collected_cents, collectedMethod: job.collected_method,
+    keptPaidInFull: job.kept_paid_in_full === null ? null : !!job.kept_paid_in_full,
+  });
   if (missing.length) return c.json({ error: `Fill in: ${missing.join(", ")}.`, missing }, 400);
   await c.env.DB.prepare(
     "UPDATE jobs SET stage = 'submitted', submitted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND stage = 'scheduled'",
@@ -417,19 +454,20 @@ jobRoutes.post("/:id/approve", requirePermission("approveExpenses"), async (c) =
   if (job.stage !== "submitted") return c.json({ error: "Only submitted jobs can be approved." }, 400);
   const b = await c.req.json().catch(() => ({}));
   const draft = draftForJob(job, await loadPricing(c.env.DB));
-  if (!draft.lines.length) return c.json({ error: "There's no amount to approve yet. Fix the problems or type an amount.", problems: draft.problems }, 400);
+  const recordOnly = NO_EXPENSE.has(job.job_type as JobType);
+  if (!draft.lines.length && !recordOnly) return c.json({ error: "There's no amount to approve yet. Fix the problems or type an amount.", problems: draft.problems }, 400);
   if (draft.problems.length && !b.force) return c.json({ error: "Check these first, or approve anyway.", problems: draft.problems }, 409);
   const userId = c.get("user").id;
   const res = await c.env.DB.prepare("UPDATE jobs SET stage = 'approved', approved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND stage = 'submitted'").bind(job.id).run();
   if (!res.meta.changes) return c.json({ error: "Already approved." }, 409);
-  await c.env.DB.batch(
+  if (draft.lines.length) await c.env.DB.batch(
     draft.lines.map((l) =>
       c.env.DB.prepare("INSERT INTO expenses (id, job_id, kind, description, basis, amount_cents, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .bind(newId(), job.id, l.kind, l.description, l.basis, l.amountCents, userId),
     ),
   );
   const total = draft.lines.reduce((t, l) => t + l.amountCents, 0);
-  await logEvent(c.env.DB, job.id, userId, "approved", `Approved $${(total / 100).toFixed(2)}${draft.lines.length > 1 ? ` (${draft.lines.length} expenses)` : ""}`);
+  await logEvent(c.env.DB, job.id, userId, "approved", recordOnly ? "Approved (recorded only, no expense)" : `Approved $${(total / 100).toFixed(2)}${draft.lines.length > 1 ? ` (${draft.lines.length} expenses)` : ""}`);
   return respondJob(c, (await getJob(c.env.DB, job.id))!, true);
 });
 

@@ -30,16 +30,18 @@ export function Pricing() {
 function Rules({ data, onSaved }: { data: PricingData; onSaved: (d: PricingData) => void }) {
   const [fuel, setFuel] = useState((data.settings.fuelChargeCents / 100).toFixed(2));
   const [attempted, setAttempted] = useState((data.settings.attemptedRepoCents / 100).toFixed(2));
+  const [attemptedPaid, setAttemptedPaid] = useState((data.settings.attemptedRepoPaidCents / 100).toFixed(2));
   const save = useMutation({ mutationFn: (body: Record<string, unknown>) => api.put<PricingData>("/pricing/settings", body), onSuccess: onSaved });
   return (
     <section className="card pad">
       <h2>Rules</h2>
       <ul className="rules">
-        <li><b>New:</b> {PERCENT_RULES.new}% of list price ({PERCENT_RULES.newMoody}% if the happy sheet says Moody)</li>
+        <li><b>New:</b> {PERCENT_RULES.new}% of list price ({PERCENT_RULES.newMoody}% if it came from the Moody lot)</li>
         <li><b>Used:</b> {PERCENT_RULES.used}% of list price</li>
         <li><b>Shop Build:</b> {PERCENT_RULES.shopBuildBase}% for 0–50 mi, +1% for every 50 mi after (50.1–100 = 11%, 100.1–150 = 12% …)</li>
-        <li><b>Repo:</b> mileage rate from the table →</li>
-        <li><b>Attempted Repo:</b> flat amount below</li>
+        <li><b>Repo:</b> by building width and miles (table →). 14' and 16' wide: % of list price + escort fees</li>
+        <li><b>Attempted Repo:</b> flat amount below, or the higher amount if the customer paid in full to keep the building</li>
+        <li><b>Private Move:</b> recorded only, never expensed</li>
       </ul>
       <div className="form">
         <label className="checkbox">
@@ -49,6 +51,7 @@ function Rules({ data, onSaved }: { data: PricingData; onSaved: (d: PricingData)
         <div className="grid2 form" style={{ marginTop: 0 }}>
           <label>Fuel charge ($)<input value={fuel} inputMode="decimal" onChange={(e) => setFuel(e.target.value)} onBlur={() => save.mutate({ fuelCharge: fuel })} /></label>
           <label>Attempted repo ($)<input value={attempted} inputMode="decimal" onChange={(e) => setAttempted(e.target.value)} onBlur={() => save.mutate({ attemptedRepo: attempted })} /></label>
+          <label>Attempted, customer paid in full ($)<input value={attemptedPaid} inputMode="decimal" onChange={(e) => setAttemptedPaid(e.target.value)} onBlur={() => save.mutate({ attemptedRepoPaid: attemptedPaid })} /></label>
         </div>
         <ErrorText error={save.error} />
       </div>
@@ -56,32 +59,48 @@ function Rules({ data, onSaved }: { data: PricingData; onSaved: (d: PricingData)
   );
 }
 
+const MILE_TIERS = [50, 100, 150];
+const tierLabel = (up: number, i: number) => `${i === 0 ? 0 : MILE_TIERS[i - 1]! + 1}–${up} mi`;
+
 function RepoRates({ data, onSaved }: { data: PricingData; onSaved: (d: PricingData) => void }) {
-  const toRows = (r: RepoRate[]) =>
-    [...r].sort((a, b) => (a.upToMiles ?? Infinity) - (b.upToMiles ?? Infinity)).map((x) => ({ upToMiles: x.upToMiles === null ? "" : String(x.upToMiles), amount: (x.amountCents / 100).toFixed(2) }));
-  const [rows, setRows] = useState(toRows(data.repoRates));
-  useEffect(() => setRows(toRows(data.repoRates)), [data.repoRates]);
-  const save = useMutation({ mutationFn: () => api.put<PricingData>("/pricing/repo-rates", { rates: rows.filter((r) => r.amount.trim()) }), onSuccess: onSaved });
+  const toGrid = (rates: RepoRate[]) => {
+    const widths = [...new Set(rates.map((r) => r.width))].sort((a, b) => a - b);
+    return (widths.length ? widths : [8, 10, 12, 14, 16]).map((w) => ({
+      width: String(w),
+      cells: MILE_TIERS.map((up) => {
+        const r = rates.find((x) => x.width === w && x.upToMiles === up);
+        return r ? (r.pct !== null ? `${r.pct}%` : `$${((r.amountCents ?? 0) / 100).toFixed(0)}`) : "";
+      }),
+    }));
+  };
+  const [grid, setGrid] = useState(toGrid(data.repoRates));
+  useEffect(() => setGrid(toGrid(data.repoRates)), [data.repoRates]);
+  const save = useMutation({
+    mutationFn: () =>
+      api.put<PricingData>("/pricing/repo-rates", {
+        rates: grid.flatMap((row) => row.cells.map((v, i) => ({ width: row.width, upToMiles: MILE_TIERS[i], value: v })).filter((c) => c.value.trim())),
+      }),
+    onSuccess: onSaved,
+  });
   return (
     <section className="card pad">
-      <h2>Repo rates by miles</h2>
-      <p className="muted small">The first row that covers the trip is used. Leave “up to” blank on the last row for “and up”.</p>
+      <h2>Repo pickups by width & miles</h2>
+      <p className="muted small">Type a dollar amount (<code>$300</code>) or a percent of the list price (<code>5%</code>, escort fees added on review). Over 150 miles you type a custom amount.</p>
       <table className="rates">
-        <thead><tr><th>Up to miles</th><th>Pay ($)</th><th></th></tr></thead>
+        <thead><tr><th>Width</th>{MILE_TIERS.map((up, i) => <th key={up}>{tierLabel(up, i)}</th>)}</tr></thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td><input value={r.upToMiles} placeholder="and up" inputMode="decimal" onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, upToMiles: e.target.value } : x)))} /></td>
-              <td><input value={r.amount} inputMode="decimal" onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, amount: e.target.value } : x)))} /></td>
-              <td><button className="icon-btn" onClick={() => setRows(rows.filter((_, k) => k !== i))} aria-label="Remove row">✕</button></td>
+          {grid.map((row, ri) => (
+            <tr key={ri}>
+              <td><b>{row.width}&apos;</b></td>
+              {row.cells.map((v, ci) => (
+                <td key={ci}><input value={v} onChange={(e) => setGrid(grid.map((r, k) => (k === ri ? { ...r, cells: r.cells.map((c, j) => (j === ci ? e.target.value : c)) } : r)))} /></td>
+              ))}
             </tr>
           ))}
         </tbody>
       </table>
-      {rows.length === 0 && <div className="muted small">No rates yet. Repos can't be priced until these are filled in.</div>}
       <div className="row-end mt">
-        <button className="btn small" onClick={() => setRows([...rows, { upToMiles: "", amount: "" }])}>＋ Add row</button>
-        <button className="btn pri small" onClick={() => save.mutate()} disabled={save.isPending}>Save rates</button>
+        <button className="btn pri small" onClick={() => save.mutate()} disabled={save.isPending}>Save repo rates</button>
       </div>
       <ErrorText error={save.error} />
       {save.isSuccess && <div className="ok-box mt">Saved.</div>}

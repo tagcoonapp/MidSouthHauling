@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { DRIVER_QUESTIONS, JOB_TYPES, missingDriverAnswers, type DriverJob, type JobType } from "../../../shared/domain";
+import { DRIVER_QUESTIONS, JOB_TYPES, PAYMENT_LABELS, PAYMENT_METHODS, missingDriverAnswers, type DriverJob, type JobType, type PaymentMethod } from "../../../shared/domain";
 import { api } from "../api";
 import { ErrorText, PhotoGrid, StagePill } from "../components/bits";
 import { fmtDay, jobTypeLabel, mapsUrl } from "../util";
 
-type WorkBody = { jobType?: JobType; driverNotes?: string; reportedCustomerName?: string; miles?: number | null; lotTakenTo?: string };
+type WorkBody = { jobType?: JobType; driverNotes?: string; reportedCustomerName?: string; miles?: number | null; lotTakenTo?: string; collected?: string | null; collectedMethod?: PaymentMethod | null; collectedRef?: string; keptPaidInFull?: boolean };
+const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 /** Text fields the driver fills in. Saved when they leave the box (and before submit). */
-interface Answers { notes: string; name: string; miles: string; lot: string }
-const fromJob = (j: DriverJob): Answers => ({ notes: j.driverNotes, name: j.reportedCustomerName, miles: j.miles === null ? "" : String(j.miles), lot: j.lotTakenTo });
+interface Answers { notes: string; name: string; miles: string; lot: string; collected: string; ref: string }
+const fromJob = (j: DriverJob): Answers => ({ notes: j.driverNotes, name: j.reportedCustomerName, miles: j.miles === null ? "" : String(j.miles), lot: j.lotTakenTo, collected: j.collectedCents === null ? "" : (j.collectedCents / 100).toFixed(2), ref: j.collectedRef });
 
 function changes(a: Answers, saved: Answers): WorkBody {
   const body: WorkBody = {};
@@ -18,6 +19,8 @@ function changes(a: Answers, saved: Answers): WorkBody {
   if (a.name !== saved.name) body.reportedCustomerName = a.name;
   if (a.miles !== saved.miles) body.miles = a.miles.trim() === "" ? null : Number(a.miles);
   if (a.lot !== saved.lot) body.lotTakenTo = a.lot;
+  if (a.collected !== saved.collected) body.collected = a.collected.trim() === "" ? null : a.collected;
+  if (a.ref !== saved.ref) body.collectedRef = a.ref;
   return body;
 }
 
@@ -26,7 +29,7 @@ export function DriverJobPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["job", id], queryFn: () => api.get<DriverJob>(`/jobs/${id}`) });
   const lots = useQuery({ queryKey: ["lots"], queryFn: () => api.get<string[]>("/lots"), staleTime: 300_000 });
-  const [a, setA] = useState<Answers>({ notes: "", name: "", miles: "", lot: "" });
+  const [a, setA] = useState<Answers>({ notes: "", name: "", miles: "", lot: "", collected: "", ref: "" });
   const [saved, setSaved] = useState<Answers>(a);
 
   useEffect(() => {
@@ -60,7 +63,12 @@ export function DriverJobPage() {
   const tel = job.phone.replace(/[^\d+]/g, "");
   const ask = DRIVER_QUESTIONS[job.jobType];
   const milesNum = a.miles.trim() === "" ? null : Number(a.miles);
-  const missing = missingDriverAnswers({ jobType: job.jobType, reportedCustomerName: a.name, miles: Number.isFinite(milesNum) ? milesNum : null, lotTakenTo: a.lot });
+  const collectedNum = a.collected.trim() === "" ? null : Math.round(Number(a.collected.replace(/[$,]/g, "")) * 100);
+  const missing = missingDriverAnswers({
+    jobType: job.jobType, reportedCustomerName: a.name, miles: Number.isFinite(milesNum) ? milesNum : null, lotTakenTo: a.lot,
+    collectCents: job.collectCents, collectedCents: collectedNum !== null && Number.isFinite(collectedNum) ? collectedNum : null, collectedMethod: job.collectedMethod,
+    keptPaidInFull: job.keptPaidInFull,
+  });
   const unsaved = Object.keys(changes(a, saved)).length > 0;
 
   return (
@@ -87,6 +95,10 @@ export function DriverJobPage() {
         {job.officeNotes && <div className="note-box"><b>From the office:</b> {job.officeNotes}</div>}
       </div>
 
+      {job.collectCents !== null && (
+        <div className="collect-banner">💵 Collect <b>{usd(job.collectCents)}</b> from the customer</div>
+      )}
+
       <div className="field">
         <label htmlFor="jt">What was this job?</label>
         <select id="jt" value={job.jobType} disabled={!editable || work.isPending} onChange={(e) => work.mutate({ jobType: e.target.value as JobType })}>
@@ -111,6 +123,39 @@ export function DriverJobPage() {
           <label htmlFor="lot">Lot taken to</label>
           <input id="lot" list="lot-list" value={a.lot} disabled={!editable} placeholder="Which lot did the building go to?" onChange={(e) => setA({ ...a, lot: e.target.value })} onBlur={save} />
           <datalist id="lot-list">{(lots.data ?? []).map((l) => <option key={l} value={l} />)}</datalist>
+        </div>
+      )}
+
+      {ask.keptPaid && (
+        <div className="field">
+          <label>Did the customer pay the full balance to keep the building?</label>
+          <div className="seg">
+            <button type="button" disabled={!editable} className={job.keptPaidInFull === true ? "on" : ""} onClick={() => work.mutate({ keptPaidInFull: true })}>Yes, paid in full</button>
+            <button type="button" disabled={!editable} className={job.keptPaidInFull === false ? "on" : ""} onClick={() => work.mutate({ keptPaidInFull: false })}>No</button>
+          </div>
+        </div>
+      )}
+
+      {ask.amountGiven && (
+        <div className="field">
+          <label htmlFor="given">How much was given ($)</label>
+          <input id="given" value={a.collected} disabled={!editable} inputMode="decimal" placeholder="e.g. 300" onChange={(e) => setA({ ...a, collected: e.target.value.replace(/[^\d.]/g, "") })} onBlur={save} />
+        </div>
+      )}
+
+      {job.collectCents !== null && (
+        <div className="field">
+          <label htmlFor="col">Amount collected ($)</label>
+          <input id="col" value={a.collected} disabled={!editable} inputMode="decimal" placeholder={(job.collectCents / 100).toFixed(2)} onChange={(e) => setA({ ...a, collected: e.target.value.replace(/[^\d.]/g, "") })} onBlur={save} />
+          <label style={{ marginTop: 12 }}>How was it paid?</label>
+          <div className="seg">
+            {PAYMENT_METHODS.map((m) => (
+              <button key={m} type="button" disabled={!editable} className={job.collectedMethod === m ? "on" : ""} onClick={() => work.mutate({ collectedMethod: m })}>{PAYMENT_LABELS[m]}</button>
+            ))}
+          </div>
+          {(job.collectedMethod === "card" || job.collectedMethod === "check") && (
+            <input style={{ marginTop: 10 }} value={a.ref} disabled={!editable} placeholder={job.collectedMethod === "card" ? "Trans ID (optional)" : "Check number (optional)"} onChange={(e) => setA({ ...a, ref: e.target.value })} onBlur={save} />
+          )}
         </div>
       )}
 

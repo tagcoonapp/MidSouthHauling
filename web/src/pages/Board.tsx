@@ -4,7 +4,7 @@ import { CALL_STATUSES, JOB_TYPES, type JobType, type Me, type OfficeJob, type T
 import { api } from "../api";
 import { CallPill, ErrorText, JobTypePill, Modal } from "../components/bits";
 import { JobDrawer } from "./JobDrawer";
-import { addDays, fmtDay, jobTypeLabel, money, weekStart } from "../util";
+import { addDays, fmtDay, jobTypeLabel, mapsUrl, money, weekStart } from "../util";
 
 interface BoardData {
   today: string;
@@ -139,7 +139,13 @@ export function Board({ me }: { me: Me }) {
                   >
                     <b>{j.customerName}</b>
                     {jobTypeLabel(j.jobType)}{j.scheduledTime ? ` · ${j.scheduledTime}` : ""}
+                    {(j.address || j.city) && (
+                      <a className="map-link" href={mapsUrl(j.address, j.city)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} draggable={false}>
+                        📍 {[j.address, j.city].filter(Boolean).join(", ")}
+                      </a>
+                    )}
                     <div className="muted small">{j.driverName}</div>
+                    {j.collectCents !== null && <div className="collect-mini">💵 Collect {money(j.collectCents)}</div>}
                     <div style={{ marginTop: 4 }}>
                       {j.stage === "scheduled" ? <CallPill status={j.callStatus} attempts={j.callAttempts} /> : <span className={`pill st-${j.stage}`}>{j.stage === "submitted" ? "Submitted" : "Approved"}</span>}
                     </div>
@@ -198,28 +204,36 @@ function AssignModal({ job, date, drivers, onClose, onSave }: {
 
 function NewJobModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const [f, setF] = useState({ customerName: "", phone: "", address: "", city: "", serial: "", building: "", balance: "", jobType: "new" as JobType, officeNotes: "" });
+  // Private moves are the most common manual entry (they aren't in NetSuite), so the form starts there.
+  const [f, setF] = useState({ customerName: "", phone: "", address: "", city: "", serial: "", building: "", balance: "", jobType: "private_move" as JobType, officeNotes: "" });
+  const isPrivate = f.jobType === "private_move";
   const [err, setErr] = useState<unknown>(null);
   const [dupe, setDupe] = useState(false);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const create = useMutation({
-    mutationFn: (allowDuplicate: boolean) => api.post<OfficeJob>("/jobs", { ...f, allowDuplicate }),
+    mutationFn: (allowDuplicate: boolean) => api.post<OfficeJob>("/jobs", isPrivate ? { ...f, serial: "", balance: "", allowDuplicate } : { ...f, allowDuplicate }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["board"] }); onClose(); },
     onError: (e) => { setErr(e); setDupe(!!(e as { body?: { duplicateOf?: string } }).body?.duplicateOf); },
   });
   return (
     <Modal title="Add a job to the pipeline" onClose={onClose} wide>
       <form className="form grid2" onSubmit={(e) => { e.preventDefault(); create.mutate(false); }}>
+        <label className="checkbox span2 private-toggle">
+          <input type="checkbox" checked={isPrivate} onChange={(e) => setF({ ...f, jobType: e.target.checked ? "private_move" : "new" })} />
+          <span><b>Private Move</b> <span className="muted">(not in NetSuite, no expense)</span></span>
+        </label>
         <label>Customer name *<input value={f.customerName} onChange={set("customerName")} required autoFocus /></label>
         <label>Phone<input value={f.phone} onChange={set("phone")} inputMode="tel" /></label>
         <label className="span2">Address<input value={f.address} onChange={set("address")} /></label>
         <label>City<input value={f.city} onChange={set("city")} /></label>
-        <label>Job type
-          <select value={f.jobType} onChange={set("jobType")}>{JOB_TYPES.map((t) => <option key={t} value={t}>{jobTypeLabel(t)}</option>)}</select>
-        </label>
-        <label>Serial #<input value={f.serial} onChange={set("serial")} /></label>
+        {!isPrivate && (
+          <label>Job type
+            <select value={f.jobType} onChange={set("jobType")}>{JOB_TYPES.filter((t) => t !== "private_move").map((t) => <option key={t} value={t}>{jobTypeLabel(t)}</option>)}</select>
+          </label>
+        )}
+        {!isPrivate && <label>Serial #<input value={f.serial} onChange={set("serial")} /></label>}
         <label>Building (size / style)<input value={f.building} onChange={set("building")} placeholder="12x24 Side Lofted" /></label>
-        <label>Balance owed ($, 0 = paid)<input value={f.balance} onChange={set("balance")} inputMode="decimal" /></label>
+        {!isPrivate && <label>Balance owed ($, 0 = paid)<input value={f.balance} onChange={set("balance")} inputMode="decimal" /></label>}
         <label className="span2">Notes for the driver<textarea rows={2} value={f.officeNotes} onChange={set("officeNotes")} /></label>
         <div className="span2">
           <ErrorText error={err} />

@@ -12,6 +12,9 @@ const sample: PhotoRead = {
   topLineLot: "Henagar",
   topLineJobType: "used",
   topLineMiles: 10,
+  balanceDueOnSheet: "$3085.43",
+  noBalanceDue: false,
+  paymentTypeOnSheet: null,
   sheetDate: "11/24/26",
   customerSigned: true,
   driverName: "Jacob W",
@@ -45,6 +48,16 @@ describe("sample happy sheet", () => {
     const checks = checkPhotoRead({ ...sample, serialOnBuilding: null }, job);
     expect(checks.find((c) => c.text.startsWith("No serial plate"))?.ok).toBe(false);
     expect(checks.find((c) => c.text.startsWith("Happy sheet serial"))?.ok).toBe(true);
+  });
+});
+
+describe("balance due on the sheet", () => {
+  it("flags NDB when NetSuite shows a balance, and a different amount", () => {
+    const ndb = checkPhotoRead({ ...sample, balanceDueOnSheet: "NDB", noBalanceDue: true }, { ...job, collectCents: 50000 });
+    expect(ndb.some((c) => !c.ok && c.text.includes("no balance due"))).toBe(true);
+    const diff = checkPhotoRead(sample, { ...job, collectCents: 100000 });
+    expect(diff.some((c) => !c.ok && c.text.includes("$3085.43 due; NetSuite shows $1000.00"))).toBe(true);
+    expect(checkPhotoRead(sample, { ...job, collectCents: 308543 }).filter((c) => !c.ok)).toEqual([]);
   });
 });
 

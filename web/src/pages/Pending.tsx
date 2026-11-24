@@ -57,6 +57,7 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
   const [override, setOverride] = useState(j.amountOverrideCents === null ? "" : (j.amountOverrideCents / 100).toFixed(2));
   const [reason, setReason] = useState("");
   const [moody, setMoody] = useState(j.moody);
+  const [escort, setEscort] = useState(j.escortCents === null ? "" : (j.escortCents / 100).toFixed(2));
   const [confirmProblems, setConfirmProblems] = useState(false);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["pending"] });
@@ -90,6 +91,14 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
         <div>
           <PhotoGrid photos={j.photos} editable={false} />
           {j.driverNotes && <div className="note-box mt"><b>Driver notes:</b> {j.driverNotes}</div>}
+          {(j.collectCents !== null || j.jobType === "private_move") && (
+            <div className={`check ${j.collectCents === null || (j.collectedCents ?? 0) >= j.collectCents ? "ok" : "warn"} mt`}>
+              💵 <div>
+                {j.jobType === "private_move" ? <><b>Customer gave {money(j.collectedCents ?? 0) === "Paid" ? "$0.00" : money(j.collectedCents ?? 0)}.</b> Recorded only, no expense.</>
+                : <><b>Collected {j.collectedCents === null ? "nothing entered" : money(j.collectedCents) === "Paid" ? "$0.00" : money(j.collectedCents)}</b> of {money(j.collectCents)} due{j.collectedMethod ? ` · ${j.collectedMethod}` : ""}{j.collectedRef ? ` · ${j.collectedRef}` : ""}.</>}
+              </div>
+            </div>
+          )}
 
           <PhotoReadBox job={j} />
 
@@ -129,6 +138,18 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
                 <span>Building came from the <b>Moody</b> lot (10% instead of 5%)</span>
               </label>
             )}
+            {j.jobType === "repo" && (d.serialInfo?.width ?? 0) >= 14 && (
+              <label>Escort fees ($)
+                <input value={escort} inputMode="decimal" placeholder="0 if none" onChange={(e) => setEscort(e.target.value)}
+                  onBlur={() => escort !== (j.escortCents === null ? "" : (j.escortCents / 100).toFixed(2)) && patch.mutate({ escort: escort === "" ? null : escort })} />
+              </label>
+            )}
+            {j.jobType === "attempted_repo" && (
+              <label className="checkbox span2">
+                <input type="checkbox" checked={j.keptPaidInFull === true} onChange={(e) => patch.mutate({ keptPaidInFull: e.target.checked })} />
+                <span>Customer paid in full to keep the building (pays more)</span>
+              </label>
+            )}
             <label>Custom amount ($)
               <input value={override} inputMode="decimal" placeholder="Leave blank to use the calculation"
                 onChange={(e) => setOverride(e.target.value)}
@@ -137,7 +158,8 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
           </div>
 
           <h3 className="sec-head">Expense report draft {d.lines.length > 1 && <span className="muted">({d.lines.length} separate expenses)</span>}</h3>
-          {d.lines.length === 0 && <div className="check warn">⚠️ <div>No amount yet. Fix the items on the left or type a custom amount.</div></div>}
+          {d.lines.length === 0 && j.jobType === "private_move" && <div className="check ok">✅ <div>Private moves aren't expensed. Approving just records the job.</div></div>}
+          {d.lines.length === 0 && j.jobType !== "private_move" && <div className="check warn">⚠️ <div>No amount yet. Fix the items on the left or type a custom amount.</div></div>}
           {d.lines.map((l, i) => (
             <div key={i} className="expense-block">
               {d.lines.length > 1 && <div className="muted small" style={{ marginBottom: 4 }}>Expense {i + 1}{l.kind === "fuel" ? " · fuel" : ""}</div>}
@@ -159,8 +181,8 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
               </div>
             </div>
           ) : (
-            <button className="btn grn big" style={{ width: "100%", marginTop: 12 }} disabled={!d.lines.length || approve.isPending} onClick={() => approve.mutate(false)}>
-              ✓ Approve {d.lines.length ? (total / 100).toLocaleString("en-US", { style: "currency", currency: "USD" }) : ""}
+            <button className="btn grn big" style={{ width: "100%", marginTop: 12 }} disabled={(!d.lines.length && j.jobType !== "private_move") || approve.isPending} onClick={() => approve.mutate(false)}>
+              ✓ {j.jobType === "private_move" ? "Approve (record only)" : `Approve ${d.lines.length ? (total / 100).toLocaleString("en-US", { style: "currency", currency: "USD" }) : ""}`}
             </button>
           )}
           <div className="row-wrap mt">
@@ -199,6 +221,7 @@ function PhotoReadBox({ job }: { job: OfficeJob }) {
           <dt>Customer</dt><dd>{r.customerName ?? "—"}{r.customerSigned ? " · signed" : r.customerSigned === false ? " · NOT signed" : ""}</dd>
           <dt>Top line</dt><dd>{r.topLineRaw ?? "—"}</dd>
           <dt>Lot</dt><dd>{r.topLineLot ?? "—"}</dd>
+          <dt>Balance on sheet</dt><dd>{r.balanceDueOnSheet ?? "—"}{r.paymentTypeOnSheet ? ` · ${r.paymentTypeOnSheet}` : ""}</dd>
           <dt>Date · driver</dt><dd>{[r.sheetDate, r.driverName].filter(Boolean).join(" · ") || "—"}</dd>
         </dl>
       )}

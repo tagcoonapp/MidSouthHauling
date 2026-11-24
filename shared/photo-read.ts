@@ -10,8 +10,11 @@ export const PhotoReadSchema = z.object({
   customerName: z.string().nullable().describe("The customer name written on the happy sheet's name line."),
   topLineRaw: z.string().nullable().describe("The handwritten note across the top of the happy sheet, exactly as written, e.g. 'Henagar - Rory - used - 10miles'."),
   topLineLot: z.string().nullable().describe("First part of the top note: the lot the building came from, e.g. Henagar or Moody."),
-  topLineJobType: z.enum(["new", "used", "shop_build", "repo", "attempted_repo"]).nullable().describe("Job type written in the top note, if any."),
+  topLineJobType: z.enum(["new", "used", "shop_build", "repo", "attempted_repo", "private_move"]).nullable().describe("Job type written in the top note, if any."),
   topLineMiles: z.number().nullable().describe("Miles written in the top note, if any."),
+  balanceDueOnSheet: z.string().nullable().describe("What is written in 'Balance Due Today', as written (e.g. '$3085.43' or 'NDB')."),
+  noBalanceDue: z.boolean().nullable().describe("True if the sheet says no balance is due (NDB, none, $0, paid)."),
+  paymentTypeOnSheet: z.enum(["cash", "check", "card"]).nullable().describe("Payment type marked on the sheet, if any. Credit = card."),
   sheetDate: z.string().nullable().describe("Date written on the happy sheet, as written."),
   customerSigned: z.boolean().nullable().describe("The customer signature line is signed."),
   driverName: z.string().nullable().describe("Driver name written at the bottom of the happy sheet."),
@@ -30,7 +33,7 @@ export interface PhotoReadState {
 }
 
 export const PHOTO_READ_SYSTEM = `You read photos from a shed-hauling company's completed jobs. Drivers photograph:
-- the "happy sheet": a Premier Portable Buildings form the customer signs. It has a "Building Inventory Number" (the serial, like ULBC-266321-1024-060323), the customer name line, signature, date, balance due, and the driver's name. Drivers often handwrite a note across the top in the form "LOT - CUSTOMER LAST NAME - TYPE - MILES", e.g. "Henagar - Rory - used - 10miles". TYPE is one of new, used, shop build, repo, attempted repo.
+- the "happy sheet": a Premier Portable Buildings form the customer signs. It has a "Building Inventory Number" (the serial, like ULBC-266321-1024-060323), the customer name line, signature, date, balance due, and the driver's name. Drivers usually handwrite a note across the top in the form "LOT - CUSTOMER LAST NAME - TYPE - MILES", e.g. "Moody - Temples - New - 114" or "Henagar - Rory - used - 10miles". The miles may be a bare number. TYPE is one of new, used, shop build, repo, attempted repo, private move. In "Balance Due Today", "NDB" means no balance due.
 - the serial plate inside the building, or the serial written in pencil on the framing when the plate is missing.
 - the building itself.
 Copy serial numbers and names exactly as written, character for character. Do not guess: use null when something isn't visible, and say what was hard to read in "unclear". Ignore payment details.`;
@@ -56,7 +59,7 @@ export interface PhotoCheck {
 /** Compares what the AI read with the job and the driver's answers. */
 export function checkPhotoRead(
   read: PhotoRead,
-  job: { customerName: string; serial: string; jobType: JobType; miles: number | null },
+  job: { customerName: string; serial: string; jobType: JobType; miles: number | null; collectCents?: number | null; collectedCents?: number | null },
 ): PhotoCheck[] {
   const out: PhotoCheck[] = [];
   if (!read.happySheetFound) out.push({ ok: false, text: "No happy sheet found in the photos." });
@@ -91,6 +94,13 @@ export function checkPhotoRead(
   }
   if (read.topLineMiles !== null && job.miles !== null && Math.abs(read.topLineMiles - job.miles) > 1) {
     out.push({ ok: false, text: `Top of the sheet says ${read.topLineMiles} miles; driver entered ${job.miles}.` });
+  }
+  if (job.collectCents && read.noBalanceDue) {
+    out.push({ ok: false, text: `Sheet says no balance due, but NetSuite shows $${(job.collectCents / 100).toFixed(2)} due.` });
+  }
+  const sheetAmt = read.balanceDueOnSheet ? Number(read.balanceDueOnSheet.replace(/[^\d.]/g, "")) : NaN;
+  if (job.collectCents && Number.isFinite(sheetAmt) && sheetAmt > 0 && Math.abs(Math.round(sheetAmt * 100) - job.collectCents) > 100) {
+    out.push({ ok: false, text: `Sheet shows $${sheetAmt.toFixed(2)} due; NetSuite shows $${(job.collectCents / 100).toFixed(2)}.` });
   }
   if (read.repairsOrComments?.trim()) out.push({ ok: false, text: `Repairs/comments on the sheet: “${read.repairsOrComments.trim()}”` });
   if (read.unclear.trim()) out.push({ ok: false, text: `Hard to read: ${read.unclear.trim()}` });

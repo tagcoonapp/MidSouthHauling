@@ -1,4 +1,4 @@
-import type { CallStatus, DriverJob, JobStage, JobType, OfficeJob, Photo } from "../shared/domain";
+import { amountToCollect, isPaymentMethod, type CallStatus, type DriverJob, type JobStage, type JobType, type OfficeJob, type Photo } from "../shared/domain";
 import type { PhotoRead, PhotoReadState, PhotoReadStatus } from "../shared/photo-read";
 
 export function photoReadOf(r: JobRow): PhotoReadState {
@@ -39,6 +39,11 @@ export interface JobRow {
   ai_result: string | null;
   ai_error: string | null;
   ai_read_at: string | null;
+  collected_cents: number | null;
+  collected_method: string | null;
+  collected_ref: string;
+  escort_cents: number | null;
+  kept_paid_in_full: number | null;
 }
 
 export interface PhotoRow {
@@ -79,6 +84,11 @@ export function toDriverJob(r: JobRow, photos: PhotoRow[]): DriverJob {
     reportedCustomerName: r.reported_customer_name,
     miles: r.miles,
     lotTakenTo: r.lot_taken_to,
+    collectCents: amountToCollect(r.job_type as JobType, r.balance_cents),
+    collectedCents: r.collected_cents,
+    collectedMethod: isPaymentMethod(r.collected_method) ? r.collected_method : null,
+    collectedRef: r.collected_ref ?? "",
+    keptPaidInFull: r.kept_paid_in_full === null || r.kept_paid_in_full === undefined ? null : !!r.kept_paid_in_full,
   };
 }
 
@@ -94,5 +104,6 @@ export function toOfficeJob(r: JobRow, photos: PhotoRow[]): OfficeJob {
     moody: !!r.moody,
     amountOverrideCents: r.amount_override_cents,
     photoRead: photoReadOf(r),
+    escortCents: r.escort_cents ?? null,
   };
 }

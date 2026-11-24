@@ -53,7 +53,7 @@ export function Completed() {
       ) : (
         <div className="card table-wrap">
           <table>
-            <thead><tr><th>Job date</th><th>Customer</th><th>Type</th><th>Serial #</th><th>Driver</th><th>Expense</th>{canMark && <th>In NetSuite</th>}</tr></thead>
+            <thead><tr><th>Job date</th><th>Customer</th><th>Type</th><th>Serial #</th><th>Driver</th><th>Collected</th><th>Expense</th>{canMark && <th>In NetSuite</th>}</tr></thead>
             <tbody>
               {jobs.map((j) => (
                 <tr key={j.id} className="clickable" onClick={() => setOpen(j.id)}>
@@ -62,8 +62,9 @@ export function Completed() {
                   <td><JobTypePill type={j.jobType} /></td>
                   <td>{j.serial}</td>
                   <td><i className="dot" style={{ background: j.driverColor ?? "#999" }} /> {j.driverName}</td>
+                  <td>{j.collectedCents ? <>{usd(j.collectedCents)}<div className="muted small">{j.collectedMethod ?? ""}</div></> : <span className="muted">—</span>}</td>
                   <td>
-                    <b>{usd(sum(j))}</b>
+                    {j.jobType === "private_move" ? <span className="muted">Not expensed</span> : <b>{usd(sum(j))}</b>}
                     {(j.expenses?.length ?? 0) > 1 && <div className="muted small">{j.expenses!.map((e) => (e.kind === "fuel" ? `fuel ${usd(e.amountCents)}` : usd(e.amountCents))).join(" + ")}</div>}
                   </td>
                   {canMark && (

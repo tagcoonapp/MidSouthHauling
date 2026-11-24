@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import type { DriverJob, Me } from "../../../shared/domain";
 import { api } from "../api";
 import { CallPill, JobTypePill, StagePill } from "../components/bits";
-import { addDays, fmtDateTime, fmtDay, weekStart } from "../util";
+import { addDays, fmtDateTime, fmtDay, mapsUrl, weekStart } from "../util";
 
 type Tab = "today" | "week" | "log";
 
@@ -39,18 +39,27 @@ export function DriverShell({ me, children }: { me: Me; children: React.ReactNod
 }
 
 function JobCard({ job, me }: { job: DriverJob; me: Me }) {
+  const navigate = useNavigate();
+  const open = () => navigate(`/job/${job.id}`);
   return (
-    <Link to={`/job/${job.id}`} className="card job-card" style={{ borderLeftColor: me.color }}>
+    <div role="link" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === "Enter" && open()} className="card job-card" style={{ borderLeftColor: me.color }}>
       <div className="row">
         <div className="job-name">{job.customerName}</div>
         {job.stage === "scheduled" ? <CallPill status={job.callStatus} /> : <StagePill stage={job.stage} />}
       </div>
-      <div className="muted">{[job.address, job.city].filter(Boolean).join(", ")}</div>
+      {(job.address || job.city) ? (
+        <a className="map-link big" href={mapsUrl(job.address, job.city)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+          📍 {[job.address, job.city].filter(Boolean).join(", ")}
+        </a>
+      ) : <div className="muted small">No address</div>}
       <div className="row" style={{ marginTop: 10 }}>
         <JobTypePill type={job.jobType} />
         <span className="muted small">{[job.building, job.scheduledTime].filter(Boolean).join(" · ")}</span>
       </div>
-    </Link>
+      {job.collectCents !== null && job.stage === "scheduled" && (
+        <div className="collect-pill">💵 Collect {(job.collectCents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}</div>
+      )}
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { parsePriceSheet } from "../../shared/pricing";
-import { newId, requirePermission } from "../auth";
+import { requirePermission } from "../auth";
 import type { AppEnv } from "../env";
 import { loadPricing } from "../pricing-store";
 
@@ -26,19 +26,36 @@ pricingRoutes.put("/prices", async (c) => {
   return c.json({ ...(await loadPricing(c.env.DB)), saved: rows.length, skipped: bad });
 });
 
+/** Replaces the repo grid. Each cell is "$300" (flat) or "5%" (of list price, plus escort fees). */
 pricingRoutes.put("/repo-rates", async (c) => {
   const b = await c.req.json().catch(() => ({}));
   const rates: unknown[] = Array.isArray(b.rates) ? b.rates : [];
-  const clean: { upToMiles: number | null; amountCents: number }[] = [];
-  for (const r of rates as { upToMiles?: unknown; amount?: unknown }[]) {
+  const clean: { width: number; upToMiles: number | null; amountCents: number | null; pct: number | null }[] = [];
+  const seen = new Set<string>();
+  for (const r of rates as { width?: unknown; upToMiles?: unknown; value?: unknown }[]) {
+    const width = Number(r.width);
     const up = r.upToMiles === null || r.upToMiles === "" || r.upToMiles === undefined ? null : Number(r.upToMiles);
-    const amt = Math.round(Number(String(r.amount ?? "").replace(/[$,]/g, "")) * 100);
-    if ((up !== null && !(up > 0)) || !(amt > 0)) return c.json({ error: "Each row needs miles (or blank for 'and up') and a dollar amount." }, 400);
-    clean.push({ upToMiles: up, amountCents: amt });
+    const raw = String(r.value ?? "").trim();
+    if (!Number.isInteger(width) || width < 4 || width > 20 || (up !== null && !(up > 0)) || !raw) {
+      return c.json({ error: "Each cell needs a width, miles and an amount like $300 or 5%." }, 400);
+    }
+    const key = `${width}:${up}`;
+    if (seen.has(key)) return c.json({ error: `Two rates for ${width}' wide, ${up ?? "and up"} miles.` }, 400);
+    seen.add(key);
+    if (raw.endsWith("%")) {
+      const pct = Number(raw.slice(0, -1));
+      if (!(pct > 0 && pct < 100)) return c.json({ error: `"${raw}" isn't a valid percentage.` }, 400);
+      clean.push({ width, upToMiles: up, amountCents: null, pct });
+    } else {
+      const cents = Math.round(Number(raw.replace(/[$,]/g, "")) * 100);
+      if (!(cents > 0)) return c.json({ error: `"${raw}" isn't a valid amount.` }, 400);
+      clean.push({ width, upToMiles: up, amountCents: cents, pct: null });
+    }
   }
-  if (clean.filter((r) => r.upToMiles === null).length > 1) return c.json({ error: "Only one 'and up' row." }, 400);
-  const stmts = [c.env.DB.prepare("DELETE FROM repo_rates")];
-  for (const r of clean) stmts.push(c.env.DB.prepare("INSERT INTO repo_rates (id, up_to_miles, amount_cents) VALUES (?, ?, ?)").bind(newId(), r.upToMiles, r.amountCents));
+  const stmts = [c.env.DB.prepare("DELETE FROM repo_rate_grid")];
+  for (const r of clean) {
+    stmts.push(c.env.DB.prepare("INSERT INTO repo_rate_grid (width, up_to_miles, amount_cents, pct) VALUES (?, ?, ?, ?)").bind(r.width, r.upToMiles, r.amountCents, r.pct));
+  }
   await c.env.DB.batch(stmts);
   return c.json(await loadPricing(c.env.DB));
 });
@@ -48,7 +65,7 @@ pricingRoutes.put("/settings", async (c) => {
   const stmts: D1PreparedStatement[] = [];
   const put = (k: string, v: string) => stmts.push(c.env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").bind(k, v));
   if (typeof b.fuelChargeOn === "boolean") put("fuelChargeOn", String(b.fuelChargeOn));
-  for (const k of ["fuelCharge", "attemptedRepo"] as const) {
+  for (const k of ["fuelCharge", "attemptedRepo", "attemptedRepoPaid"] as const) {
     if (b[k] !== undefined) {
       const cents = Math.round(Number(String(b[k]).replace(/[$,]/g, "")) * 100);
       if (!(cents >= 0)) return c.json({ error: "Amounts must be dollars." }, 400);

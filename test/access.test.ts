@@ -10,6 +10,7 @@ const row: JobRow = {
   scheduled_date: "2026-11-23", scheduled_time: "11:30 AM", office_notes: "", driver_notes: "", pdf_key: null,
   submitted_at: null, created_at: "2026-11-20T00:00:00Z",
   reported_customer_name: "", miles: 31, lot_taken_to: "", moody: 0, amount_override_cents: 38500,
+  collected_cents: null, collected_method: null, collected_ref: "", escort_cents: 7500, kept_paid_in_full: null,
   ai_status: "done", ai_result: "{\"serialOnHappySheet\":\"X\"}", ai_error: null, ai_read_at: null,
 };
 
@@ -35,7 +36,13 @@ describe("driver job view", () => {
     expect(json).not.toContain("2115");
     expect(json).not.toContain("385");
     expect(Object.keys(j)).not.toEqual(expect.arrayContaining(["balanceCents"]));
-    for (const k of Object.keys(j)) expect(k.toLowerCase()).not.toMatch(/balance|price|amount|cost|override|moody|draft|expense|driver(id|name|color)/);
+    for (const k of Object.keys(j)) expect(k.toLowerCase()).not.toMatch(/balance|price|amount|cost|override|moody|draft|expense|escort|driver(id|name|color)/);
+  });
+  it("shows the balance to collect only on New/Used/Shop Build jobs", () => {
+    expect(toDriverJob(row, []).collectCents).toBeNull(); // repo: nothing to collect, balance hidden
+    expect(toDriverJob({ ...row, job_type: "new" }, []).collectCents).toBe(211540);
+    expect(toDriverJob({ ...row, job_type: "used", balance_cents: 0 }, []).collectCents).toBeNull();
+    expect(toDriverJob({ ...row, job_type: "private_move" }, []).collectCents).toBeNull();
   });
   it("office view adds the balance", () => {
     expect(toOfficeJob(row, []).balanceCents).toBe(211540);
