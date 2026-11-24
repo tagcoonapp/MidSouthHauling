@@ -1,16 +1,17 @@
-/* Brand: change these two (plus --brand-ink) to restyle the whole app once the logo is final. */
+/* Brand: crimson, houndstooth gray and white. Change these to restyle the whole app. */
 :root {
-  --brand: #14213d;
-  --brand-2: #24345a;
-  --accent: #f28c28;
-  --accent-ink: #b45309;
+  --brand: #9e1b32;        /* crimson: sidebar, header bars */
+  --brand-2: #7a1426;      /* deeper crimson: active nav, hovers */
+  --accent: #d6d6d3;       /* light gray: logo accent, active tab line */
+  --accent-ink: #5f6468;   /* dark gray */
+  --tint: #fbeef0;         /* pale crimson for highlights */
 
-  --bg: #f4f5f7;
+  --bg: #f4f4f3;
   --card: #fff;
   --ink: #16202e;
   --mute: #667085;
   --line: #e4e7ec;
-  --pri: #1f6feb;
+  --pri: #9e1b32;
   --ok: #16a34a;
   --bad: #b42318;
   --radius: 12px;
@@ -29,12 +30,12 @@ input, select, textarea {
   font: inherit; color: var(--ink); width: 100%; background: #fff;
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
 }
-input:focus, select:focus, textarea:focus { outline: 2px solid #1f6feb55; border-color: var(--pri); }
+input:focus, select:focus, textarea:focus { outline: 2px solid #9e1b3255; border-color: var(--pri); }
 input:disabled, select:disabled, textarea:disabled { background: #f9fafb; color: var(--mute); }
 textarea { resize: vertical; }
 
 .muted { color: var(--mute); }
-.muted-light { color: #b6c2d9; }
+.muted-light { color: #f1d6db; }
 .ink { color: var(--ink); }
 .small { font-size: 12.5px; }
 .pad { padding: 16px; }
@@ -65,7 +66,7 @@ textarea { resize: vertical; }
 .btn.ghost-light { background: #ffffff1a; color: #fff; border-color: #ffffff33; }
 .icon-btn { border: 0; background: none; font-size: 18px; color: var(--mute); padding: 4px 8px; }
 .chip-light { background: #ffffff1a; color: #fff; border: 1px solid #ffffff33; border-radius: 99px; padding: 4px 10px; font-size: 12.5px; font-weight: 600; }
-.link-light { background: none; border: 0; color: #b6c2d9; text-decoration: underline; padding: 0; font-size: 12.5px; margin-top: 6px; }
+.link-light { background: none; border: 0; color: #f1d6db; text-decoration: underline; padding: 0; font-size: 12.5px; margin-top: 6px; }
 
 .logo { display: inline-flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; }
 .logo b { color: var(--accent); }
@@ -111,7 +112,7 @@ textarea { resize: vertical; }
 .phone-app { max-width: 560px; margin: 0 auto; min-height: 100vh; padding-bottom: env(safe-area-inset-bottom); }
 .ptop { background: var(--brand); color: #fff; padding: calc(16px + env(safe-area-inset-top)) 18px 16px; }
 .tabs { display: flex; background: var(--brand); padding: 0 8px; position: sticky; top: 0; z-index: 5; }
-.tabs a { flex: 1; text-align: center; color: #b6c2d9; padding: 11px 0; font-weight: 600; font-size: 14px; border-bottom: 3px solid transparent; }
+.tabs a { flex: 1; text-align: center; color: #f1d6db; padding: 11px 0; font-weight: 600; font-size: 14px; border-bottom: 3px solid transparent; }
 .tabs a.active { color: #fff; border-color: var(--accent); }
 .job-card { display: block; margin: 12px 14px; padding: 14px; border-left: 5px solid var(--pri); color: inherit; }
 .log-card { border-left-color: var(--line); }
@@ -132,7 +133,7 @@ textarea { resize: vertical; }
 
 /* office */
 .office { display: flex; min-height: 100vh; }
-.side { width: 220px; background: var(--brand); color: #c9d3e6; padding: 20px 14px; flex-shrink: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+.side { width: 220px; background: var(--brand); color: #f6e3e6; padding: 20px 14px; flex-shrink: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
 .side nav { margin-top: 26px; display: flex; flex-direction: column; gap: 2px; }
 .side nav a { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; border-radius: 8px; color: inherit; font-weight: 600; }
 .side nav a.active { background: var(--brand-2); color: #fff; }
@@ -145,12 +146,12 @@ textarea { resize: vertical; }
 
 .board { display: flex; gap: 16px; align-items: flex-start; }
 .pipe { width: 260px; flex-shrink: 0; border-radius: var(--radius); padding: 4px; min-height: 200px; }
-.pipe.drop, .day.drop { outline: 2px dashed var(--pri); background: #eef4ff; }
+.pipe.drop, .day.drop { outline: 2px dashed var(--pri); background: var(--tint); }
 .pc { padding: 11px; margin-bottom: 9px; font-size: 13px; cursor: grab; }
 .pc:hover, .ev:hover { box-shadow: 0 4px 14px #0001; }
 .cal { flex: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 .day { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); min-height: 520px; padding: 8px; }
-.day.today { border-color: var(--pri); box-shadow: 0 0 0 2px #1f6feb22; }
+.day.today { border-color: var(--pri); box-shadow: 0 0 0 2px #9e1b3222; }
 .day h3 { font-size: 12px; color: var(--mute); margin-bottom: 8px; display: flex; justify-content: space-between; }
 .ev { border-radius: 8px; padding: 8px 9px; margin-bottom: 8px; border-left: 4px solid; background: #f8fafc; font-size: 12px; cursor: pointer; }
 .ev[draggable="true"] { cursor: grab; }
@@ -242,7 +243,7 @@ code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.
 .collect-mini { font-size: 11px; font-weight: 700; color: #9a3412; margin-top: 2px; }
 .seg { display: flex; gap: 8px; }
 .seg button { flex: 1; padding: 12px 6px; border: 1px solid var(--line); background: #fff; border-radius: 10px; font-weight: 600; }
-.seg button.on { border-color: var(--pri); background: #eef4ff; color: #1e40af; box-shadow: 0 0 0 1px var(--pri); }
+.seg button.on { border-color: var(--pri); background: var(--tint); color: var(--brand-2); box-shadow: 0 0 0 1px var(--pri); }
 .map-link { display: block; color: var(--pri); font-size: 11.5px; margin-top: 2px; text-decoration: underline; text-underline-offset: 2px; }
 .map-link.big { font-size: 14.5px; margin-top: 4px; }
 .job-card { cursor: pointer; }
@@ -378,3 +379,18 @@ code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.
 .info-row.due .info-value { color: #9a3412; }
 .info-hint { display: block; font-size: 13px; font-weight: 600; color: #9a3412; }
 .back-btn { margin-top: 0; text-decoration: none; font-size: 13px; }
+
+/* crimson theme touches */
+.logo b { color: var(--accent); }
+.btn.pri:hover { background: var(--brand-2); border-color: var(--brand-2); }
+.side nav a:hover { background: #ffffff14; }
+.side .badge { background: #fff; color: var(--brand); }
+.tabs a.active { border-color: #fff; }
+.auth-screen { background: linear-gradient(160deg, var(--brand) 0 38%, var(--bg) 38%); }
+.chip-light, .btn.ghost-light { border-color: #ffffff40; }
+.add-note, .map-link, .info-value a, a { color: var(--pri); }
+.side a, .ptop a.chip-light, .btn, .btn.pri { color: inherit; }
+.tabs a { color: #f1d6db; }
+.tabs a.active { color: #fff; }
+.btn.pri { color: #fff; }
+.side nav a { color: inherit; }
