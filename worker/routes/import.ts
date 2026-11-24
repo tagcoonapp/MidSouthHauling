@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { JOB_TYPE_LABELS } from "../../shared/domain";
-import { nameKey, normSerialKey, parseImport, type ImportRow } from "../../shared/import";
+import { importMoody, nameKey, normSerialKey, parseImport, type ImportRow } from "../../shared/import";
+import { baseCustomerName } from "../../shared/domain";
 import { newId, requirePermission } from "../auth";
 import type { AppEnv } from "../env";
 
@@ -22,12 +23,12 @@ importRoutes.post("/", async (c) => {
   const { results: existing } = await c.env.DB.prepare("SELECT customer_name, city, serial, stage FROM jobs").all<{ customer_name: string; city: string; serial: string; stage: string }>();
   const serials = new Set(existing.map((e) => normSerialKey(e.serial)).filter(Boolean));
   // Without a serial, a job counts as already here if an open job has the same name and city.
-  const openNames = new Set(existing.filter((e) => e.stage === "pipeline" || e.stage === "scheduled").map((e) => `${nameKey(e.customer_name)}|${nameKey(e.city)}`));
+  const openNames = new Set(existing.filter((e) => e.stage === "pipeline" || e.stage === "scheduled").map((e) => `${nameKey(baseCustomerName(e.customer_name))}|${nameKey(e.city)}`));
 
   const seen = new Set<string>();
   const preview: ImportPreviewRow[] = rows.map((r) => {
     const sk = normSerialKey(r.serial);
-    const key = sk || `${nameKey(r.customerName)}|${nameKey(r.city)}`;
+    const key = sk || `${nameKey(baseCustomerName(r.customerName))}|${nameKey(r.city)}`;
     if (seen.has(key)) return { ...r, status: "duplicate_in_list", reason: "Listed twice" };
     seen.add(key);
     if (sk && serials.has(sk)) return { ...r, status: "exists", reason: "Serial already on the site" };
@@ -47,9 +48,9 @@ importRoutes.post("/", async (c) => {
     order += 1;
     stmts.push(
       c.env.DB.prepare(
-        `INSERT INTO jobs (id, customer_name, address, city, phone, serial, balance_cents, job_type, office_notes, sort_order, source, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'netsuite', ?)`,
-      ).bind(id, r.customerName.slice(0, 120), r.address.slice(0, 500), r.city.slice(0, 80), r.phone.slice(0, 40), r.serial.slice(0, 60), r.balanceCents, r.jobType, r.notes.slice(0, 2000), order, user.id),
+        `INSERT INTO jobs (id, customer_name, address, city, phone, serial, balance_cents, job_type, office_notes, sort_order, moody, source, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'netsuite', ?)`,
+      ).bind(id, r.customerName.slice(0, 160), r.address.slice(0, 500), r.city.slice(0, 80), r.phone.slice(0, 40), r.serial.slice(0, 60), r.balanceCents, r.jobType, r.notes.slice(0, 2000), order, importMoody(r) ? 1 : 0, user.id),
       c.env.DB.prepare("INSERT INTO job_events (id, job_id, user_id, kind, detail) VALUES (?, ?, ?, 'created', ?)").bind(newId(), id, user.id, `Imported from NetSuite (${JOB_TYPE_LABELS[r.jobType]})`),
     );
   }

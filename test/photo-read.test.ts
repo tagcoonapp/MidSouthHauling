@@ -61,6 +61,15 @@ describe("balance due on the sheet", () => {
   });
 });
 
+describe("job names with the lot", () => {
+  it("base name strips the lot", async () => {
+    const { baseCustomerName, lotFromName } = await import("../shared/domain");
+    expect(baseCustomerName("Jade Gibbons | Henagar")).toBe("Jade Gibbons");
+    expect(lotFromName("Jade Gibbons | Henagar")).toBe("Henagar");
+    expect(baseCustomerName("Ron Tate")).toBe("Ron Tate");
+  });
+});
+
 describe("Moody and serial fallback", () => {
   it("spots the Moody lot", () => {
     expect(isMoodyLot("Moody")).toBe(true);

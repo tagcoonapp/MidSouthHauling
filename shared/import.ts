@@ -1,5 +1,6 @@
 // Bulk import of jobs read from NetSuite (by Claude in Chrome, or pasted by hand).
 import { JOB_TYPES, type JobType } from "./domain";
+import { isMoodyLot } from "./photo-read";
 
 export interface ImportRow {
   customerName: string;
@@ -9,6 +10,8 @@ export interface ImportRow {
   serial: string;
   balanceCents: number | null;
   jobType: JobType;
+  /** The lot the building is at / coming from (not used for repos). */
+  lot: string;
   notes: string;
 }
 
@@ -66,13 +69,25 @@ function fromObject(o: Record<string, unknown>): ImportRow {
     serial: pick(o, "serial", "serialnumber", "buildinginventorynumber", "inventorynumber", "sn").toUpperCase(),
     balanceCents: parseMoney(balanceRaw),
     jobType: parseJobType(pick(o, "jobtype", "type")),
+    lot: pick(o, "lot", "lotname", "saleslot", "location", "fromlot"),
     notes: pick(o, "notes", "note", "comments", "memo"),
   };
 }
 
+const IS_REPO = (t: JobType) => t === "repo" || t === "attempted_repo";
+
+/** Non-repo jobs are named "Customer | Lot" so the lot shows everywhere the name does. */
+export function withLot(r: ImportRow): ImportRow {
+  if (IS_REPO(r.jobType) || !r.lot.trim() || r.customerName.includes("|")) return r;
+  return { ...r, customerName: `${r.customerName.trim()} | ${r.lot.trim()}` };
+}
+
+/** A New building from the Moody lot pays the Moody rate. */
+export const importMoody = (r: ImportRow) => r.jobType === "new" && isMoodyLot(r.lot || (r.customerName.split("|")[1] ?? ""));
+
 /**
  * Accepts a JSON list of objects (what Claude in Chrome pastes), or one job per line separated by | or tabs:
- * Name | Address | City | Phone | Serial | Balance | Type
+ * Name | Address | City | Phone | Serial | Balance | Type | Lot
  */
 export function parseImport(text: string): ParsedImport {
   const rows: ImportRow[] = [];
@@ -90,7 +105,7 @@ export function parseImport(text: string): ParsedImport {
         if (!item || typeof item !== "object") { bad.push({ entry: JSON.stringify(item), reason: "Not a job" }); continue; }
         const row = fromObject(item as Record<string, unknown>);
         if (!row.customerName) bad.push({ entry: JSON.stringify(item).slice(0, 120), reason: "No customer name" });
-        else rows.push(row);
+        else rows.push(withLot(row));
       }
       return { rows, bad };
     } catch {
@@ -103,7 +118,7 @@ export function parseImport(text: string): ParsedImport {
     if (!l || /^name\s*[|\t]/i.test(l) || l.startsWith("#")) continue;
     const parts = l.split(/\s*[|\t]\s*/);
     if (parts.length < 2 || !parts[0]) { bad.push({ entry: l, reason: "Expected: Name | Address | City | Phone | Serial | Balance | Type" }); continue; }
-    rows.push({
+    rows.push(withLot({
       customerName: parts[0]!,
       address: parts[1] ?? "",
       city: parts[2] ?? "",
@@ -111,8 +126,9 @@ export function parseImport(text: string): ParsedImport {
       serial: (parts[4] ?? "").toUpperCase(),
       balanceCents: parseMoney(parts[5]),
       jobType: parseJobType(parts[6]),
-      notes: parts[7] ?? "",
-    });
+      lot: parts[7] ?? "",
+      notes: parts[8] ?? "",
+    }));
   }
   return { rows, bad };
 }
@@ -132,9 +148,11 @@ export function importInstructions(siteUrl: string): string {
    - serial (the Building Inventory Number, like ULB-305353-1016-092126)
    - balance (balance due in dollars; 0 if none)
    - jobType (one of: New, Used, Shop Build, Repo, Attempted Repo; use New if you can't tell)
+   - lot (the lot the building is at or coming from, e.g. Moody or Henagar; leave blank for repos)
+   Put only the customer's name in customerName. The site adds the lot to the name itself.
    If the list doesn't show something, open that job's record to find it. If it truly isn't there, leave it blank.
 3. Open ${siteUrl}/import (I'm already signed in), paste everything into the big box as a JSON list, for example:
-   [{"customerName":"William Temples","address":"123 Main St","city":"Moody","phone":"(205) 555-0100","serial":"ULB-305353-1016-092126","balance":0,"jobType":"New"}]
+   [{"customerName":"William Temples","address":"123 Main St","city":"Moody","phone":"(205) 555-0100","serial":"ULB-305353-1016-092126","balance":0,"jobType":"New","lot":"Moody"}]
 4. Click "Preview", then click the "Add" button to add the new jobs. Jobs already on the site are skipped automatically.
 5. Tell me how many jobs were added and list any you couldn't read.`;
 }

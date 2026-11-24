@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { importInstructions, parseImport, parseJobType } from "../shared/import";
 
+describe("lot after the name", () => {
+  it("adds the lot to non-repo names and ticks Moody for New from Moody", async () => {
+    const { importMoody } = await import("../shared/import");
+    const { rows } = parseImport(JSON.stringify([
+      { customerName: "Jade Gibbons", lot: "Henagar", jobType: "Used", serial: "A-1-1010-1" },
+      { customerName: "Ron Tate", lot: "Henagar", jobType: "Repo", serial: "A-1-1010-2" },
+      { customerName: "Al Try", lot: "Moody", jobType: "Attempted Repo" },
+      { customerName: "Mo New", lot: "Moody", jobType: "New", serial: "A-1-1010-3" },
+      { customerName: "Already | Moody", lot: "Moody", jobType: "New" },
+    ]));
+    expect(rows.map((r) => r.customerName)).toEqual(["Jade Gibbons | Henagar", "Ron Tate", "Al Try", "Mo New | Moody", "Already | Moody"]);
+    expect(rows.map(importMoody)).toEqual([false, false, false, true, true]);
+  });
+  it("line format takes the lot as the 8th column", () => {
+    expect(parseImport("Jade Gibbons | 1 Rd | Athens | | UCC-1-1232-1 | 0 | New | Henagar").rows[0]!.customerName).toBe("Jade Gibbons | Henagar");
+  });
+});
+
 describe("NetSuite import parsing", () => {
   it("reads the JSON list Claude in Chrome pastes, with loose keys and money", () => {
     const { rows, bad } = parseImport(`Here you go:

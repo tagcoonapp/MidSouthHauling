@@ -67,6 +67,16 @@ export function missingDriverAnswers(j: {
   return out;
 }
 
+/** Job names can carry the lot after a bar ("Jade Gibbons | Henagar"); this is the customer part. */
+export function baseCustomerName(name: string): string {
+  return name.split("|")[0]!.trim();
+}
+/** The lot written after the bar in a job name, if any. */
+export function lotFromName(name: string): string {
+  const i = name.indexOf("|");
+  return i === -1 ? "" : name.slice(i + 1).trim();
+}
+
 export const CALL_STATUSES = ["not_called", "attempted", "waiting", "confirmed"] as const;
 export type CallStatus = (typeof CALL_STATUSES)[number];
 

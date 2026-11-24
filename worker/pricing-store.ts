@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, draftExpenses, namesMatch, type PriceRow, type PricingSettings, type RepoRate } from "../shared/pricing";
-import { amountToCollect, type JobType } from "../shared/domain";
+import { amountToCollect, baseCustomerName, type JobType } from "../shared/domain";
 import { photoReadOf, type JobRow } from "./serialize";
 import { checkPhotoRead, pricingSerial } from "../shared/photo-read";
 
@@ -35,11 +35,13 @@ export async function loadPricing(db: D1Database): Promise<PricingData> {
 /** The expense draft for a job, with the scheduler's amount override applied to the main line. */
 export function draftForJob(job: JobRow, pricing: PricingData) {
   const read = photoReadOf(job).result;
+  // Job names may carry the lot ("Jade Gibbons | Henagar"); compare and print only the customer part.
+  const customer = baseCustomerName(job.customer_name);
   const { serial, fromPhoto } = pricingSerial(job.serial, read);
   const draft = draftExpenses(
     {
       jobType: job.job_type as JobType,
-      customerName: job.reported_customer_name || job.customer_name,
+      customerName: job.reported_customer_name || customer,
       serial,
       miles: job.miles,
       moody: !!job.moody,
@@ -57,16 +59,16 @@ export function draftForJob(job: JobRow, pricing: PricingData) {
       main.basis = `Set by scheduler (calculated: ${(main.amountCents / 100).toFixed(2)})`;
       main.amountCents = job.amount_override_cents;
     } else {
-      draft.lines.unshift({ kind: "main", description: job.customer_name.toUpperCase(), amountCents: job.amount_override_cents, basis: "Set by scheduler" });
+      draft.lines.unshift({ kind: "main", description: customer.toUpperCase(), amountCents: job.amount_override_cents, basis: "Set by scheduler" });
       draft.problems = draft.problems.filter((p) => !/price sheet|repo rate|Pricing page|Can't read style/.test(p));
     }
   }
-  const nameMatches = job.reported_customer_name.trim() ? namesMatch(job.reported_customer_name, job.customer_name) : null;
-  if (nameMatches === false) draft.problems.push(`Driver wrote "${job.reported_customer_name}" but the job is for "${job.customer_name}".`);
+  const nameMatches = job.reported_customer_name.trim() ? namesMatch(job.reported_customer_name, customer) : null;
+  if (nameMatches === false) draft.problems.push(`Driver wrote "${job.reported_customer_name}" but the job is for "${customer}".`);
   if (fromPhoto) draft.problems = draft.problems.filter((p) => p !== "No serial number on this job.");
   const photoChecks = read
     ? checkPhotoRead(read, {
-        customerName: job.customer_name, serial: job.serial, jobType: job.job_type as JobType, miles: job.miles,
+        customerName: customer, serial: job.serial, jobType: job.job_type as JobType, miles: job.miles,
         collectCents: amountToCollect(job.job_type as JobType, job.balance_cents), collectedCents: job.collected_cents,
       })
     : [];
