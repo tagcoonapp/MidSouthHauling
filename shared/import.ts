@@ -152,7 +152,8 @@ export function importInstructions(siteUrl: string): string {
   return `Please import my In Progress jobs from NetSuite into my hauling site.
 
 1. In my NetSuite tab (Employee Center), open the jobs list and show the jobs that are "In Progress". Do not change, submit or delete anything in NetSuite. Only read.
-2. For EVERY job in that list, collect:
+2. Go through the WHOLE In Progress list, every page. Jobs you leave out get flagged on the site as "not in NetSuite".
+   For EVERY job in that list, collect:
    - customerName
    - address: the FULL street address for the job (delivery address; for a repo, the customer's address), including
      state and ZIP if shown, e.g. "670 Park Ave, Moody, AL 35004". This is required: open the job's record if the list
@@ -172,5 +173,6 @@ export function importInstructions(siteUrl: string): string {
     {"customerName":"Rex Owens","address":"77 Pine Hollow Ln, Decatur, AL 35603","city":"Decatur","phone":"(256) 555-0142","serial":"UCC-34543-1232-090356","balance":940,"jobType":"Repo","tloAddresses":["12 Oak St, Hartselle, AL 35640"]}]
 4. Click "Preview", then click the blue Add / Fill in button. New jobs are added; jobs already on the site only get missing
    details filled in (address, phone, TLO addresses, balance).
-5. Tell me how many jobs were added or filled in, and list any you couldn't read.`;
+5. Tell me how many jobs were added or filled in, list any you couldn't read, and list any jobs the page says are
+   "On the site but not in NetSuite".`;
 }

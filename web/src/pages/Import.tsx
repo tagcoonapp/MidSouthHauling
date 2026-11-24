@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { importInstructions, type ImportRow } from "../../../shared/import";
+import { daysOnUs, type JobType } from "../../../shared/domain";
 import { api } from "../api";
 import { ErrorText, JobTypePill } from "../components/bits";
 import { money, addressLine } from "../util";
 
 type PreviewRow = ImportRow & { status: "new" | "update" | "exists" | "duplicate_in_list"; reason: string };
-interface ImportResult { rows: PreviewRow[]; bad: { entry: string; reason: string }[]; newCount?: number; updateCount?: number; added?: number; updated?: number; skipped?: number }
+interface MissingJob { id: string; customerName: string; jobType: JobType; stage: string; scheduledDate: string | null; serial: string; createdAt: string }
+interface ImportResult { rows: PreviewRow[]; bad: { entry: string; reason: string }[]; newCount?: number; updateCount?: number; added?: number; updated?: number; skipped?: number; missing?: MissingJob[]; cleared?: number }
 
 export function copyImportInstructions(): Promise<void> {
   return navigator.clipboard?.writeText(importInstructions(location.origin)) ?? Promise.resolve();
@@ -67,14 +69,17 @@ export function ImportPage() {
             <Link to="/">See the pipeline</Link>
           </div>
         )}
+        {add.data?.missing && add.data.missing.length > 0 && (
+          <div className="check warn mt">⚠️ <div><b>{add.data.missing.length} job{add.data.missing.length === 1 ? " is" : "s are"} on the site but not in NetSuite's In Progress list.</b> They're tagged "Not in NetSuite" on the schedule.</div></div>
+        )}
       </section>
 
       {data && (
         <section className="card pad" style={{ marginTop: 14 }}>
           <div className="row">
             <h2>{data.rows.length} job{data.rows.length === 1 ? "" : "s"} found · {data.newCount} new{data.updateCount ? ` · ${data.updateCount} to fill in` : ""}</h2>
-            <button className="btn pri" disabled={(!data.newCount && !data.updateCount) || add.isPending} onClick={() => add.mutate()}>
-              {add.isPending ? "Saving…" : data.updateCount && data.newCount ? `Add ${data.newCount} new & fill in ${data.updateCount}` : data.updateCount ? `Fill in ${data.updateCount} job${data.updateCount === 1 ? "" : "s"}` : `Add ${data.newCount} new job${data.newCount === 1 ? "" : "s"}`}
+            <button className="btn pri" disabled={(!data.newCount && !data.updateCount && !data.missing?.length) || add.isPending} onClick={() => add.mutate()}>
+              {add.isPending ? "Saving…" : data.updateCount && data.newCount ? `Add ${data.newCount} new & fill in ${data.updateCount}` : data.updateCount ? `Fill in ${data.updateCount} job${data.updateCount === 1 ? "" : "s"}` : data.newCount ? `Add ${data.newCount} new job${data.newCount === 1 ? "" : "s"}` : "Save (flag missing jobs)"}
             </button>
           </div>
           <div className="table-wrap mt">
@@ -95,6 +100,26 @@ export function ImportPage() {
               </tbody>
             </table>
           </div>
+          {data.missing && data.missing.length > 0 && (
+            <div className="missing-box mt">
+              <h3>⚠️ On the site but not in NetSuite ({data.missing.length})</h3>
+              <p className="muted small">These open jobs aren't in this In Progress list. They may have been cancelled or finished in NetSuite. Saving tags them "Not in NetSuite" on the schedule (nothing is deleted). Only accurate if the list above is complete.</p>
+              <table>
+                <thead><tr><th>Customer</th><th>Type</th><th>Where</th><th>Serial #</th><th>On us</th></tr></thead>
+                <tbody>
+                  {data.missing.map((m) => (
+                    <tr key={m.id}>
+                      <td><b>{m.customerName}</b></td>
+                      <td><JobTypePill type={m.jobType} /></td>
+                      <td>{m.stage === "scheduled" && m.scheduledDate ? `Calendar ${m.scheduledDate}` : "Pipeline"}</td>
+                      <td>{m.serial || "—"}</td>
+                      <td>{daysOnUs(m.createdAt)}d</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {data.bad.length > 0 && <div className="check warn mt">⚠️ <div>{data.bad.length} entr{data.bad.length === 1 ? "y" : "ies"} couldn't be read: {data.bad.map((b) => b.reason).join("; ")}</div></div>}
         </section>
       )}

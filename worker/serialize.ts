@@ -46,6 +46,7 @@ export interface JobRow {
   escort_cents: number | null;
   kept_paid_in_full: number | null;
   tlo_notes?: string;
+  missing_from_netsuite_at?: string | null;
   lat?: number | null;
   lng?: number | null;
   geo_approx?: number;
@@ -115,5 +116,6 @@ export function toOfficeJob(r: JobRow, photos: PhotoRow[]): OfficeJob {
     lat: r.lat ?? null,
     lng: r.lng ?? null,
     geoApprox: !!r.geo_approx,
+    missingFromNetsuiteAt: r.missing_from_netsuite_at ?? null,
   };
 }

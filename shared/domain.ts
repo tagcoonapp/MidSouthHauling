@@ -246,6 +246,8 @@ export interface OfficeJob extends DriverJob {
   lat: number | null;
   lng: number | null;
   geoApprox: boolean;
+  /** Set when the last full NetSuite import didn't list this open job. */
+  missingFromNetsuiteAt: string | null;
   events?: JobEvent[];
   /** Live expense draft (submitted jobs, scheduler only). */
   draft?: import("./pricing").ExpenseDraft & { nameMatches: boolean | null; photoChecks: import("./photo-read").PhotoCheck[]; serialFromPhoto: boolean };

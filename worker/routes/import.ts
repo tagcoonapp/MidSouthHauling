@@ -11,9 +11,12 @@ type Status = "new" | "update" | "exists" | "duplicate_in_list";
 export interface ImportPreviewRow extends ImportRow { status: Status; reason: string }
 
 interface Existing {
-  id: string; customer_name: string; city: string; serial: string; stage: string;
+  id: string; customer_name: string; city: string; serial: string; stage: string; job_type: string;
+  scheduled_date: string | null; created_at: string; missing_from_netsuite_at: string | null;
   address: string; phone: string; tlo_notes: string; balance_cents: number | null;
 }
+
+export interface MissingJob { id: string; customerName: string; jobType: string; stage: string; scheduledDate: string | null; serial: string; createdAt: string }
 
 /** Blank fields on a job already on the site that this import can fill in. Never overwrites anything. */
 function fillsFor(e: Existing, r: ImportRow): Record<string, string | number> {
@@ -41,7 +44,7 @@ importRoutes.post("/", async (c) => {
   if (rows.length > 300) return c.json({ error: "Up to 300 jobs at a time." }, 400);
 
   const { results: existing } = await c.env.DB.prepare(
-    "SELECT id, customer_name, city, serial, stage, address, phone, tlo_notes, balance_cents FROM jobs ORDER BY created_at DESC",
+    "SELECT id, customer_name, city, serial, stage, job_type, scheduled_date, created_at, missing_from_netsuite_at, address, phone, tlo_notes, balance_cents FROM jobs ORDER BY created_at DESC",
   ).all<Existing>();
   const bySerial = new Map<string, Existing>();
   for (const e of existing) { const k = normSerialKey(e.serial); if (k && !bySerial.has(k)) bySerial.set(k, e); }
@@ -53,14 +56,16 @@ importRoutes.post("/", async (c) => {
   }
 
   const seen = new Set<string>();
+  const matched = new Set<string>();
   const updates: { id: string; fills: Record<string, string | number> }[] = [];
   const preview: ImportPreviewRow[] = rows.map((r) => {
     const sk = normSerialKey(r.serial);
     const key = sk || `${nameKey(baseCustomerName(r.customerName))}|${nameKey(r.city)}`;
     if (seen.has(key)) return { ...r, status: "duplicate_in_list", reason: "Listed twice" };
     seen.add(key);
-    const match = sk ? bySerial.get(sk) : byName.get(key);
+    const match = sk ? bySerial.get(sk) ?? byName.get(`${nameKey(baseCustomerName(r.customerName))}|${nameKey(r.city)}`) : byName.get(key);
     if (!match) return { ...r, status: "new", reason: "" };
+    matched.add(match.id);
     const fills = fillsFor(match, r);
     if (Object.keys(fills).length) {
       updates.push({ id: match.id, fills });
@@ -69,8 +74,12 @@ importRoutes.post("/", async (c) => {
     return { ...r, status: "exists", reason: sk ? "Already on the site" : "Same name and city already open" };
   });
   const toAdd = preview.filter((r) => r.status === "new");
+  // Open NetSuite jobs on the site that this (full) In Progress list no longer has. Private moves aren't in NetSuite.
+  const missing: MissingJob[] = existing
+    .filter((e) => (e.stage === "pipeline" || e.stage === "scheduled") && e.job_type !== "private_move" && !matched.has(e.id))
+    .map((e) => ({ id: e.id, customerName: e.customer_name, jobType: e.job_type, stage: e.stage, scheduledDate: e.scheduled_date, serial: e.serial, createdAt: e.created_at }));
 
-  if (!b.commit) return c.json({ rows: preview, bad, newCount: toAdd.length, updateCount: updates.length });
+  if (!b.commit) return c.json({ rows: preview, bad, newCount: toAdd.length, updateCount: updates.length, missing });
 
   const user = c.get("user");
   const max = await c.env.DB.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM jobs WHERE stage = 'pipeline'").first<{ m: number }>();
@@ -98,6 +107,16 @@ importRoutes.post("/", async (c) => {
       c.env.DB.prepare("INSERT INTO job_events (id, job_id, user_id, kind, detail) VALUES (?, ?, ?, 'imported', ?)").bind(newId(), u.id, user.id, `Filled in from NetSuite: ${cols.map((k) => FIELD_WORDS[k]).join(", ")}`),
     );
   }
+  // Flag jobs NetSuite no longer lists; clear the flag on ones it lists again.
+  for (const m of missing) {
+    stmts.push(c.env.DB.prepare("UPDATE jobs SET missing_from_netsuite_at = COALESCE(missing_from_netsuite_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = ?").bind(m.id));
+  }
+  const nowFound = existing.filter((e) => e.missing_from_netsuite_at && matched.has(e.id));
+  for (const e of nowFound) stmts.push(c.env.DB.prepare("UPDATE jobs SET missing_from_netsuite_at = NULL WHERE id = ?").bind(e.id));
+  const newlyMissing = missing.filter((m) => !existing.find((e) => e.id === m.id)?.missing_from_netsuite_at);
+  for (const m of newlyMissing) {
+    stmts.push(c.env.DB.prepare("INSERT INTO job_events (id, job_id, user_id, kind, detail) VALUES (?, ?, ?, 'netsuite', 'Not in NetSuite In Progress list anymore')").bind(newId(), m.id, user.id));
+  }
   for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80));
-  return c.json({ rows: preview, bad, added: toAdd.length, updated: updates.length, skipped: preview.length - toAdd.length - updates.length });
+  return c.json({ rows: preview, bad, added: toAdd.length, updated: updates.length, skipped: preview.length - toAdd.length - updates.length, missing, cleared: nowFound.length });
 });

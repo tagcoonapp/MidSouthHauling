@@ -60,6 +60,7 @@ export function Board({ me }: { me: Me }) {
 
   if (!board.data || !from) return <div className="muted">Loading…</div>;
   const { pipeline: allPipeline, scheduled, today } = board.data;
+  const missingNs = [...allPipeline, ...scheduled].filter((j) => j.missingFromNetsuiteAt && j.stage !== "submitted" && j.stage !== "approved");
   const pipeline = search.trim() ? allPipeline.filter((j) => matchesSearch(j, search)) : allPipeline;
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
   const all = [...pipeline, ...scheduled];
@@ -150,6 +151,16 @@ export function Board({ me }: { me: Me }) {
         <b style={{ marginLeft: 10 }}>Calls:</b>
         {CALL_STATUSES.map((s) => <CallPill key={s} status={s} />)}
       </div>
+      {missingNs.length > 0 && (
+        <details className="ns-banner">
+          <summary>⚠️ <b>{missingNs.length} job{missingNs.length === 1 ? " isn't" : "s aren't"} in NetSuite's In Progress list anymore.</b> Check whether they were cancelled or finished. <span className="muted">Show</span></summary>
+          <div className="ns-list">
+            {missingNs.map((j) => (
+              <button key={j.id} className="pill cs-attempted" onClick={() => setOpenId(j.id)}>{j.customerName}{j.scheduledDate ? ` · ${fmtDay(j.scheduledDate, { month: "numeric", day: "numeric" })}` : " · pipeline"}</button>
+            ))}
+          </div>
+        </details>
+      )}
       <ErrorText error={err} />
 
       <div className="board">
@@ -177,6 +188,7 @@ export function Board({ me }: { me: Me }) {
             <div key={j.id} className="card pc" draggable={canEdit} onDragStart={(e) => onDragStart(e, j)} onClick={() => setOpenId(j.id)}
               onContextMenu={(e) => { if (!canEdit) return; e.preventDefault(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }}>
               <div className="row"><b>{j.customerName}</b><JobTypePill type={j.jobType} /></div>
+              {j.missingFromNetsuiteAt && <div className="ns-tag">⚠️ Not in NetSuite</div>}
               <div className="muted">{[j.city, j.building].filter(Boolean).join(" · ")}</div>
               <div className="row" style={{ marginTop: 6 }}>
                 <span className="muted small">{j.serial ? `SN ${j.serial}` : ""}</span>
@@ -214,6 +226,7 @@ export function Board({ me }: { me: Me }) {
                       <div className="ev-line1">
                         {j.stage === "scheduled" ? <i className={`dot cs-dot-${j.callStatus}`} /> : <span className={`stage-tag st-${j.stage}`}>{j.stage === "submitted" ? "Sub" : "✓"}</span>}
                         <b>{j.customerName}</b>
+                        {j.missingFromNetsuiteAt && <span className="ns-mini" title="Not in NetSuite's In Progress list anymore">⚠️</span>}
                       </div>
                       <div className="ev-line2">
                         <span>{jobTypeLabel(j.jobType)}{j.scheduledTime ? ` · ${j.scheduledTime}` : ""}</span>
