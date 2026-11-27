@@ -457,6 +457,6 @@ tr.total-row td { border-top: 2px solid var(--line); font-weight: 650; }
 /* Premier lots on the map */
 .lot-pin { width: 16px; height: 16px; border-radius: 4px; background: #475467; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 3px #0005;
   font: 700 9px/12px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; cursor: default; }
-.legend .lot-key { display: inline-block; width: 14px; height: 14px; border-radius: 3px; background: #475467; color: #fff; font-size: 9px; font-weight: 700; font-style: normal; line-height: 14px; text-align: center; vertical-align: -2px; }
+.legend .lot-key { width: 14px; height: 14px; vertical-align: -2px; }
 .lots-toggle { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .lots-toggle input { width: auto; margin: 0; }

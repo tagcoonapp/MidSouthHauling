@@ -40,33 +40,51 @@ export function JobMap({ jobs, lots = [], onOpen, onPinDrop, onPinHover, big, on
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const fitted = useRef(false);
-  const lotMarkers = useRef<maplibregl.Marker[]>([]);
   const [mapReady, setMapReady] = useState(false);
   const [showLots, setShowLots] = useState(() => { try { return localStorage.getItem("mapLots") !== "0"; } catch { return true; } });
   const toggleLots = () => setShowLots((v) => { try { localStorage.setItem("mapLots", v ? "0" : "1"); } catch { /* private mode */ } return !v; });
 
+  // Premier lots: one map layer with the Premier barn logo (fast even with every lot in the country).
   useEffect(() => {
     const m = map.current;
     if (!m) return;
-    lotMarkers.current.forEach((mk) => mk.remove());
-    lotMarkers.current = [];
-    if (!showLots) return;
-    for (const lot of lots) {
-      if (lot.lat === null || lot.lng === null) continue;
-      const el = document.createElement("div");
-      el.className = "lot-pin";
-      el.textContent = "P";
-      const hover = new maplibregl.Popup({ offset: 10, closeButton: false, closeOnClick: false, className: "map-hover", maxWidth: "280px" }).setHTML(
-        `<b>${esc(lot.name)}</b><div class="hv-type" style="color:#475467">Premier lot</div>` +
-          (lot.address ? `<div><span class="hl">Address</span> ${esc(lot.address)}</div>` : "") +
-          (lot.phone ? `<div><span class="hl">Phone</span> ${esc(lot.phone)}</div>` : ""),
-      );
-      el.addEventListener("mouseenter", () => hover.setLngLat([lot.lng!, lot.lat!]).addTo(m));
-      el.addEventListener("mouseleave", () => hover.remove());
-      const mk = new maplibregl.Marker({ element: el }).setLngLat([lot.lng, lot.lat]).addTo(m);
-      mk.getElement().style.zIndex = "0";
-      lotMarkers.current.push(mk);
-    }
+    const data: maplibregl.GeoJSONSourceSpecification["data"] & object = {
+      type: "FeatureCollection",
+      features: lots.filter((l) => l.lat !== null && l.lng !== null).map((l) => ({
+        type: "Feature", geometry: { type: "Point", coordinates: [l.lng!, l.lat!] }, properties: { name: l.name, address: l.address, phone: l.phone },
+      })),
+    };
+    const apply = async () => {
+      if (!m.hasImage("premier-lot")) {
+        const img = await m.loadImage("/premier-lot.png").catch(() => null);
+        if (img && !m.hasImage("premier-lot")) m.addImage("premier-lot", img.data, { pixelRatio: 2 });
+      }
+      const src = m.getSource("lots") as maplibregl.GeoJSONSource | undefined;
+      if (src) src.setData(data);
+      else {
+        m.addSource("lots", { type: "geojson", data });
+        m.addLayer({
+          id: "lots", type: "symbol", source: "lots",
+          layout: { "icon-image": "premier-lot", "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.55, 8, 0.85, 12, 1], "icon-allow-overlap": true, "icon-ignore-placement": true },
+        });
+        const hover = new maplibregl.Popup({ offset: 12, closeButton: false, closeOnClick: false, className: "map-hover", maxWidth: "280px" });
+        m.on("mouseenter", "lots", (e) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          m.getCanvas().style.cursor = "default";
+          const p = f.properties as { name: string; address: string; phone: string };
+          hover.setLngLat((f.geometry as unknown as { coordinates: [number, number] }).coordinates).setHTML(
+            `<b>${esc(p.name)}</b><div class="hv-type" style="color:#3a9b35">Premier lot</div>` +
+              (p.address ? `<div><span class="hl">Address</span> ${esc(p.address)}</div>` : "") +
+              (p.phone ? `<div><span class="hl">Phone</span> ${esc(p.phone)}</div>` : ""),
+          ).addTo(m);
+        });
+        m.on("mouseleave", "lots", () => { m.getCanvas().style.cursor = ""; hover.remove(); });
+      }
+      m.setLayoutProperty("lots", "visibility", showLots ? "visible" : "none");
+    };
+    if (m.isStyleLoaded()) void apply();
+    else m.once("load", () => void apply());
   }, [lots, showLots, mapReady]);
   const cb = useRef({ onOpen, onPinDrop, onPinHover });
   cb.current = { onOpen, onPinDrop, onPinHover };
@@ -210,7 +228,7 @@ export function JobMap({ jobs, lots = [], onOpen, onPinDrop, onPinHover, big, on
           ))}
           {jobs.some((j) => j.geoApprox && j.lat !== null && j.jobType !== "inv_haul") && <span title="The exact address wasn't found, so the pin is in the middle of the town"><i className="approx-key">?</i> Town only</span>}
           {lots.length > 0 && (
-            <label className="lots-toggle"><input type="checkbox" checked={showLots} onChange={toggleLots} /> <i className="lot-key">P</i> Lots</label>
+            <label className="lots-toggle"><input type="checkbox" checked={showLots} onChange={toggleLots} /> <img className="lot-key" src="/premier-lot-14.png" alt="" /> Premier lots</label>
           )}
           {unplaced > 0 && <span className="muted">· {unplaced} not on the map yet</span>}
         </div>

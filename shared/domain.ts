@@ -406,6 +406,9 @@ export interface Lot {
 const LOT_FILLER = new Set(["premier", "buildings", "building", "portable", "of", "the", "and", "trailers", "trailer", "lot", "sheds", "shed", "llc", "inc", "al", "ga", "tn", "ms", "co"]);
 const lotWords = (s: string) => s.toLowerCase().replace(/&/g, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w && !LOT_FILLER.has(w));
 
+const HOME = { lat: 34.25, lng: -86.4 };
+const distFromHome = (l: Lot) => (l.lat === null || l.lng === null ? 1e9 : (l.lat - HOME.lat) ** 2 + ((l.lng - HOME.lng) * 0.83) ** 2);
+
 /**
  * The lot a job name or "lot taken to" answer refers to ("Moody lot", "Vision 7 Buildings - Sumiton", "SOUTH FULTON").
  * Matches an alias or every distinctive word of the lot's name. Null if nothing fits.
@@ -420,7 +423,8 @@ export function matchLot(text: string, lots: Lot[]): Lot | null {
     const aliasHit = lot.aliases.split(",").map((a) => a.trim()).filter(Boolean).find(has);
     const nameWords = lotWords(lot.name);
     const score = aliasHit ? 100 + lotWords(aliasHit).length : nameWords.length && has(lot.name) ? nameWords.length : 0;
-    if (score > bestScore) { best = lot; bestScore = score; }
+    // Equal matches: take the lot nearest home (north Alabama), since Premier has lots with similar names everywhere.
+    if (score > bestScore || (score > 0 && score === bestScore && best && distFromHome(lot) < distFromHome(best))) { best = lot; bestScore = score; }
   }
   return best;
 }

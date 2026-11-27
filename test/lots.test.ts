@@ -30,6 +30,12 @@ describe("matching job lot names to Premier lots", () => {
   ])("%s → %s", (text, name) => {
     expect(matchLot(text, lots)?.name).toBe(name);
   });
+  it("prefers the nearer lot when two names match equally", () => {
+    const far = { ...lot("Sheds of Columbus"), id: "far", lat: 39.96, lng: -82.99 };
+    const near = { ...lot("Sheds of Columbus"), id: "near", lat: 32.5, lng: -84.97 };
+    expect(matchLot("Sheds of Columbus", [far, near])?.id).toBe("near");
+    expect(matchLot("Sheds of Columbus", [near, far])?.id).toBe("near");
+  });
   it("returns null for unknown or empty", () => {
     expect(matchLot("Somewhere Else", lots)).toBeNull();
     expect(matchLot("", lots)).toBeNull();
