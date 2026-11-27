@@ -86,7 +86,7 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
         line("Phone", j.phone) +
         line("Serial", j.serial) +
         line("Building", j.building) +
-        line("Balance", j.balanceCents === null ? null : j.balanceCents ? money(j.balanceCents) : "Paid") +
+        line("Balance", j.balanceCents === null ? null : j.balanceCents ? money(j.balanceCents) : "None") +
         line("Calls", `${CALL_STATUS_LABELS[j.callStatus]}${j.callAttempts ? ` (${j.callAttempts} attempt${j.callAttempts === 1 ? "" : "s"})` : ""}`) +
         line("On us", days === 0 ? "Added today" : `${days} day${days === 1 ? "" : "s"}`) +
         (j.officeNotes ? line("Notes", j.officeNotes.length > 120 ? j.officeNotes.slice(0, 120) + "…" : j.officeNotes) : "") +
