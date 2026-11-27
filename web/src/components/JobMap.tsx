@@ -166,6 +166,7 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
           {(Object.keys(MAP_COLORS) as MapCategory[]).map((c) => (
             <span key={c}><i className="dot" style={{ background: MAP_COLORS[c] }} /> {LABELS[c]}</span>
           ))}
+          {jobs.some((j) => j.geoApprox && j.lat !== null) && <span title="The exact address wasn't found, so the pin is in the middle of the town"><i className="approx-key">?</i> Town only</span>}
           {unplaced > 0 && <span className="muted">· {unplaced} not on the map yet</span>}
         </div>
       </div>
