@@ -7,12 +7,17 @@ import { addressLine, jobTypeLabel, money } from "../util";
 export const MAP_COLORS: Record<MapCategory, string> = {
   sale: "#16a34a", // New / Used
   shop_build: "#2563eb",
+  inv_haul: "#d97706", // shed-shaped pin
   repo: "#dc2626", // Repo / Attempted Repo
   private_move: "#9333ea",
 };
-const LABELS: Record<MapCategory, string> = { sale: "New / Used", shop_build: "Shop Build", repo: "Repo", private_move: "Private Move" };
+const LABELS: Record<MapCategory, string> = { sale: "New / Used", shop_build: "Shop Build", inv_haul: "INV Haul", repo: "Repo", private_move: "Private Move" };
 // OpenFreeMap: free map tiles, no key, no usage limits, OK for business use.
 const STYLE = "https://tiles.openfreemap.org/styles/liberty";
+
+/** A little shed (roofline) for INV Haul pins. */
+const shedSvg = (color: string, size: number) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="M12 2 L23 11 L20 11 L20 22 L4 22 L4 11 L1 11 Z" fill="${color}" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -56,9 +61,11 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
       const cat = mapCategory(j.jobType, j.customerName);
       const days = daysOnUs(j.createdAt);
       const dot = document.createElement("div");
-      dot.className = `map-pin${j.geoApprox ? " approx" : ""}`;
-      dot.style.background = MAP_COLORS[cat];
+      dot.className = `map-pin${cat === "inv_haul" ? " shed" : ""}${j.geoApprox ? " approx" : ""}`;
+      if (cat === "inv_haul") dot.innerHTML = shedSvg(MAP_COLORS[cat], 24);
+      else dot.style.background = MAP_COLORS[cat];
       dot.dataset.jobId = j.id;
+      dot.dataset.color = MAP_COLORS[cat];
       const popup = makePopup(j, cat, days);
       // Hover: a quick card with the customer's info (no click needed).
       const hover = makeHover(j, cat, days);
@@ -128,7 +135,7 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
         ghost = document.createElement("div");
         ghost.className = "pin-ghost";
         ghost.textContent = j.customerName;
-        ghost.style.borderLeftColor = dot.style.background;
+        ghost.style.borderLeftColor = dot.dataset.color ?? "";
         document.body.appendChild(ghost);
         popup.remove();
       }
@@ -164,7 +171,9 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
         </div>
         <div className="legend">
           {(Object.keys(MAP_COLORS) as MapCategory[]).map((c) => (
-            <span key={c}><i className="dot" style={{ background: MAP_COLORS[c] }} /> {LABELS[c]}</span>
+            <span key={c}>
+              {c === "inv_haul" ? <i className="shed-key" dangerouslySetInnerHTML={{ __html: shedSvg(MAP_COLORS[c], 14) }} /> : <i className="dot" style={{ background: MAP_COLORS[c] }} />} {LABELS[c]}
+            </span>
           ))}
           {jobs.some((j) => j.geoApprox && j.lat !== null) && <span title="The exact address wasn't found, so the pin is in the middle of the town"><i className="approx-key">?</i> Town only</span>}
           {unplaced > 0 && <span className="muted">· {unplaced} not on the map yet</span>}

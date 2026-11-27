@@ -91,11 +91,12 @@ export function lotFromName(name: string): string {
 /** Lots that build on site: jobs from these lots are Shop Builds. */
 export const isShopBuildLot = (lot: string | null | undefined) => !!lot && /\b(mize|south\s*fulton|toccoa)\b/i.test(lot);
 
-export type MapCategory = "sale" | "shop_build" | "repo" | "private_move";
+export type MapCategory = "sale" | "shop_build" | "inv_haul" | "repo" | "private_move";
 /** Map pin color group: green New/Used, blue Shop Build (or a shop-build lot), red Repo/Attempted Repo, purple Private Move. */
 export function mapCategory(jobType: JobType, name: string): MapCategory {
   if (jobType === "repo" || jobType === "attempted_repo") return "repo";
   if (jobType === "private_move") return "private_move";
+  if (jobType === "inv_haul") return "inv_haul"; // lot-to-lot: drawn as a little shed
   if (jobType === "shop_build" || isShopBuildLot(lotFromName(name))) return "shop_build";
   return "sale";
 }

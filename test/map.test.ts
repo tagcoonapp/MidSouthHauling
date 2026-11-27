@@ -10,6 +10,7 @@ describe("map colors and shop-build lots", () => {
     expect(mapCategory("shop_build", "Cy")).toBe("shop_build");
     expect(mapCategory("repo", "Di | Mize")).toBe("repo");
     expect(mapCategory("attempted_repo", "Ed")).toBe("repo");
+    expect(mapCategory("inv_haul", "Lot 4 | Mize")).toBe("inv_haul");
     expect(mapCategory("private_move", "Fi")).toBe("private_move");
   });
   it("Mize, South Fulton and Toccoa GA lots count as shop builds", () => {
