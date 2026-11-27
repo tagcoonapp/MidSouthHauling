@@ -1,3 +1,4 @@
+import { lotFromName, matchLot, type Lot } from "../shared/domain";
 // Turns a job's address into map coordinates using free services, and caches the result on the job.
 // 1. US Census geocoder (exact street matches; needs a state, so AL then GA are tried; it corrects the state itself)
 // 2. OpenStreetMap Nominatim, limited to the Midsouth region (AL, GA, TN, MS and neighbors)
@@ -52,16 +53,32 @@ export async function geocodeAddress(address: string, city: string, f: Fetch = f
 /** Places up to `limit` un-placed pipeline/scheduled jobs on the map. Safe to call often. */
 export async function geocodePending(env: Env, limit = 6): Promise<void> {
   const { results } = await env.DB.prepare(
-    `SELECT id, address, city FROM jobs WHERE geo_status = 'none' AND stage IN ('pipeline','scheduled') AND (address != '' OR city != '') LIMIT ?`,
-  ).bind(limit).all<{ id: string; address: string; city: string }>();
+    `SELECT id, address, city, job_type, customer_name, lot_taken_to FROM jobs WHERE geo_status = 'none' AND stage IN ('pipeline','scheduled')
+     AND (address != '' OR city != '' OR job_type = 'inv_haul') LIMIT ?`,
+  ).bind(limit).all<{ id: string; address: string; city: string; job_type: string; customer_name: string; lot_taken_to: string }>();
+  const lots = results.some((j) => j.job_type === "inv_haul") ? await loadLots(env.DB) : [];
   for (const j of results) {
     // Claim the job first so overlapping calls don't look the same address up twice.
     const claim = await env.DB.prepare("UPDATE jobs SET geo_status = 'working' WHERE id = ? AND geo_status = 'none'").bind(j.id).run();
     if (!claim.meta.changes) continue;
+    // INV Hauls go lot to lot: put the pin on the Premier lot named in the job, when we know it.
+    if (j.job_type === "inv_haul") {
+      const lot = [lotFromName(j.customer_name), j.customer_name, j.lot_taken_to].map((t) => matchLot(t, lots)).find((l) => l && l.lat !== null);
+      if (lot) {
+        await env.DB.prepare("UPDATE jobs SET geo_status = 'ok', lat = ?, lng = ?, geo_approx = 0 WHERE id = ?").bind(lot.lat, lot.lng, j.id).run();
+        continue;
+      }
+      if (!j.address && !j.city) { await env.DB.prepare("UPDATE jobs SET geo_status = 'failed' WHERE id = ?").bind(j.id).run(); continue; }
+    }
     const hit = await geocodeAddress(j.address, j.city).catch(() => null);
     await env.DB.prepare("UPDATE jobs SET geo_status = ?, lat = ?, lng = ?, geo_approx = ? WHERE id = ?")
       .bind(hit ? "ok" : "failed", hit?.lat ?? null, hit?.lng ?? null, hit?.approx ? 1 : 0, j.id)
       .run();
     await pause(1100);
   }
+}
+
+export async function loadLots(db: D1Database): Promise<Lot[]> {
+  const { results } = await db.prepare("SELECT id, name, address, phone, lat, lng, aliases FROM lots WHERE active = 1 ORDER BY name").all<Lot>();
+  return results;
 }

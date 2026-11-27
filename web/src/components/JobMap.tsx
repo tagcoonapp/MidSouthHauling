@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { CALL_STATUS_LABELS, daysOnUs, mapCategory, type MapCategory, type OfficeJob } from "../../../shared/domain";
+import { CALL_STATUS_LABELS, daysOnUs, mapCategory, type Lot, type MapCategory, type OfficeJob } from "../../../shared/domain";
 import { addressLine, jobTypeLabel, money } from "../util";
 
 export const MAP_COLORS: Record<MapCategory, string> = {
@@ -26,8 +26,10 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
  * The map grabs mouse-downs for panning (so the browser's drag-and-drop never starts), so pins use their own
  * pointer drag: a label follows the pointer and the drop goes to whatever [data-drop] element is under it.
  */
-export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize }: {
+export function JobMap({ jobs, lots = [], onOpen, onPinDrop, onPinHover, big, onToggleSize }: {
   jobs: OfficeJob[];
+  /** Premier lots, drawn as small gray markers under the job pins. */
+  lots?: Lot[];
   onOpen: (id: string) => void;
   onPinDrop?: (jobId: string, target: string) => void;
   onPinHover?: (target: string | null) => void;
@@ -38,6 +40,34 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const fitted = useRef(false);
+  const lotMarkers = useRef<maplibregl.Marker[]>([]);
+  const [mapReady, setMapReady] = useState(false);
+  const [showLots, setShowLots] = useState(() => { try { return localStorage.getItem("mapLots") !== "0"; } catch { return true; } });
+  const toggleLots = () => setShowLots((v) => { try { localStorage.setItem("mapLots", v ? "0" : "1"); } catch { /* private mode */ } return !v; });
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    lotMarkers.current.forEach((mk) => mk.remove());
+    lotMarkers.current = [];
+    if (!showLots) return;
+    for (const lot of lots) {
+      if (lot.lat === null || lot.lng === null) continue;
+      const el = document.createElement("div");
+      el.className = "lot-pin";
+      el.textContent = "P";
+      const hover = new maplibregl.Popup({ offset: 10, closeButton: false, closeOnClick: false, className: "map-hover", maxWidth: "280px" }).setHTML(
+        `<b>${esc(lot.name)}</b><div class="hv-type" style="color:#475467">Premier lot</div>` +
+          (lot.address ? `<div><span class="hl">Address</span> ${esc(lot.address)}</div>` : "") +
+          (lot.phone ? `<div><span class="hl">Phone</span> ${esc(lot.phone)}</div>` : ""),
+      );
+      el.addEventListener("mouseenter", () => hover.setLngLat([lot.lng!, lot.lat!]).addTo(m));
+      el.addEventListener("mouseleave", () => hover.remove());
+      const mk = new maplibregl.Marker({ element: el }).setLngLat([lot.lng, lot.lat]).addTo(m);
+      mk.getElement().style.zIndex = "0";
+      lotMarkers.current.push(mk);
+    }
+  }, [lots, showLots, mapReady]);
   const cb = useRef({ onOpen, onPinDrop, onPinHover });
   cb.current = { onOpen, onPinDrop, onPinHover };
 
@@ -46,6 +76,7 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
     const m = new maplibregl.Map({ container: el.current, style: STYLE, center: [-85.8, 34.2], zoom: 6.3, attributionControl: { compact: true } });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
     map.current = m;
+    setMapReady(true);
     const ro = new ResizeObserver(() => m.resize());
     ro.observe(el.current);
     return () => { ro.disconnect(); m.remove(); map.current = null; };
@@ -74,7 +105,9 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
       dot.addEventListener("pointerdown", (e) => { hover.remove(); startPinDrag(e, j, dot, m, popup); });
       // The map closes popups on any click; keep the pin's own click from reaching it.
       dot.addEventListener("click", (e) => e.stopPropagation());
-      markers.current.push(new maplibregl.Marker({ element: dot }).setLngLat([j.lng!, j.lat!]).addTo(m));
+      const mk = new maplibregl.Marker({ element: dot }).setLngLat([j.lng!, j.lat!]).addTo(m);
+      mk.getElement().style.zIndex = "1";
+      markers.current.push(mk);
     }
     if (placed.length && !fitted.current) {
       const b = new maplibregl.LngLatBounds();
@@ -176,6 +209,9 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
             </span>
           ))}
           {jobs.some((j) => j.geoApprox && j.lat !== null && j.jobType !== "inv_haul") && <span title="The exact address wasn't found, so the pin is in the middle of the town"><i className="approx-key">?</i> Town only</span>}
+          {lots.length > 0 && (
+            <label className="lots-toggle"><input type="checkbox" checked={showLots} onChange={toggleLots} /> <i className="lot-key">P</i> Lots</label>
+          )}
           {unplaced > 0 && <span className="muted">· {unplaced} not on the map yet</span>}
         </div>
       </div>

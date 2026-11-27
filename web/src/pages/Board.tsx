@@ -5,7 +5,7 @@ import { api } from "../api";
 import { CallPill, ErrorText, JobTypePill, Modal } from "../components/bits";
 import { JobDrawer } from "./JobDrawer";
 import { JobMap } from "../components/JobMap";
-import { CALL_STATUS_LABELS, daysOnUs, schedulingNotesFor, type CalendarNote, type CallStatus, type SchedulingNote } from "../../../shared/domain";
+import { CALL_STATUS_LABELS, daysOnUs, schedulingNotesFor, type CalendarNote, type CallStatus, type Lot, type SchedulingNote } from "../../../shared/domain";
 import { NotesWarning, useSchedulingNotes } from "./SchedulingNotes";
 import { copyImportInstructions } from "./Import";
 import { useNavigate } from "react-router-dom";
@@ -56,6 +56,7 @@ export function Board({ me }: { me: Me }) {
     refetchInterval: 60_000,
   });
   const team = useTeam();
+  const lots = useQuery({ queryKey: ["lots-map"], queryFn: () => api.get<Lot[]>("/lots/map"), staleTime: 3_600_000 });
   const drivers = (team.data ?? []).filter((u) => u.role === "driver" && u.active);
   const activeFilter = driverFilter && drivers.some((d) => d.id === driverFilter) ? driverFilter : "";
   const canEdit = me.permissions.editSchedule;
@@ -333,7 +334,7 @@ export function Board({ me }: { me: Me }) {
             );
           })}
         </div>
-        <JobMap jobs={pipeline} onOpen={setOpenId} onPinDrop={canEdit ? placeJob : undefined} onPinHover={setDropTarget} big={mapBig} onToggleSize={toggleMap} />
+        <JobMap jobs={pipeline} lots={lots.data ?? []} onOpen={setOpenId} onPinDrop={canEdit ? placeJob : undefined} onPinHover={setDropTarget} big={mapBig} onToggleSize={toggleMap} />
         </div>
       </div>
 

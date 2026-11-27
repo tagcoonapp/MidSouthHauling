@@ -20,7 +20,7 @@ import {
 } from "../../shared/domain";
 import { draftForJob, loadPricing } from "../pricing-store";
 import { readJobPhotos } from "../photo-reader";
-import { geocodePending } from "../geocode";
+import { geocodePending, loadLots } from "../geocode";
 import { rollOverMissedJobs } from "../rollover";
 import { NOTE_SELECT, endOfDay, toNote } from "./notes";
 import { newId, requirePermission } from "../auth";
@@ -593,11 +593,19 @@ listRoutes.get("/completed", requirePermission("viewFinancial"), async (c) => {
 
 /** Lot names used before, to suggest when a driver fills in "lot taken to". */
 listRoutes.get("/lots", async (c) => {
-  const { results } = await c.env.DB.prepare(
-    "SELECT lot_taken_to AS name, COUNT(*) AS n FROM jobs WHERE lot_taken_to != '' GROUP BY lot_taken_to COLLATE NOCASE ORDER BY n DESC LIMIT 30",
-  ).all<{ name: string }>();
-  return c.json(results.map((r) => r.name));
+  const [used, lots] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT lot_taken_to AS name, COUNT(*) AS n FROM jobs WHERE lot_taken_to != '' GROUP BY lot_taken_to COLLATE NOCASE ORDER BY n DESC LIMIT 30",
+    ).all<{ name: string }>(),
+    loadLots(c.env.DB),
+  ]);
+  // Names used before first, then the Premier lots we know about.
+  const names = [...used.results.map((r) => r.name), ...lots.map((l) => l.name)];
+  return c.json([...new Map(names.map((n) => [n.toLowerCase(), n])).values()]);
 });
+
+/** Premier lots with addresses and map locations (office). */
+listRoutes.get("/lots/map", requirePermission("viewPipeline"), async (c) => c.json(await loadLots(c.env.DB)));
 
 // ---------- Photos ----------
 

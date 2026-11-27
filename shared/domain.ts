@@ -389,3 +389,38 @@ export function schedulingNotesFor(notes: SchedulingNote[], job: { id: string; c
   const name = baseCustomerName(job.customerName).toLowerCase();
   return notes.filter((n) => !n.doneAt && (n.jobId ? n.jobId === job.id : !!name && baseCustomerName(n.customerName).toLowerCase() === name));
 }
+
+// ---------- Premier lots ----------
+
+export interface Lot {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  lat: number | null;
+  lng: number | null;
+  /** Other names used for this lot in job names, comma separated (e.g. "Moody"). */
+  aliases: string;
+}
+
+const LOT_FILLER = new Set(["premier", "buildings", "building", "portable", "of", "the", "and", "trailers", "trailer", "lot", "sheds", "shed", "llc", "inc", "al", "ga", "tn", "ms", "co"]);
+const lotWords = (s: string) => s.toLowerCase().replace(/&/g, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w && !LOT_FILLER.has(w));
+
+/**
+ * The lot a job name or "lot taken to" answer refers to ("Moody lot", "Vision 7 Buildings - Sumiton", "SOUTH FULTON").
+ * Matches an alias or every distinctive word of the lot's name. Null if nothing fits.
+ */
+export function matchLot(text: string, lots: Lot[]): Lot | null {
+  const words = new Set(lotWords(text));
+  if (!words.size) return null;
+  const has = (phrase: string) => { const w = lotWords(phrase); return w.length > 0 && w.every((x) => words.has(x)); };
+  let best: Lot | null = null;
+  let bestScore = 0;
+  for (const lot of lots) {
+    const aliasHit = lot.aliases.split(",").map((a) => a.trim()).filter(Boolean).find(has);
+    const nameWords = lotWords(lot.name);
+    const score = aliasHit ? 100 + lotWords(aliasHit).length : nameWords.length && has(lot.name) ? nameWords.length : 0;
+    if (score > bestScore) { best = lot; bestScore = score; }
+  }
+  return best;
+}
