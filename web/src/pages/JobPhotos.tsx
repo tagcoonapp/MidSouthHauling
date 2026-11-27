@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMe } from "../App";
 import { Link, useParams } from "react-router-dom";
 import { baseCustomerName, type OfficeJob } from "../../../shared/domain";
 import { api } from "../api";
@@ -12,6 +13,8 @@ import { addressLine, fmtDay, jobTypeLabel } from "../util";
 export function JobPhotos() {
   const { id } = useParams();
   const q = useQuery({ queryKey: ["job", id], queryFn: () => api.get<OfficeJob>(`/jobs/${id}`) });
+  const me = useMe().data;
+  const mark = useMutation({ mutationFn: (entered: boolean) => api.post(`/jobs/${id}/entered`, { entered }), onSuccess: () => q.refetch() });
   if (q.isError) return <div>Job not found. <Link to="/completed">Back</Link></div>;
   if (!q.data) return <div className="muted">Loading…</div>;
   const j = q.data;
@@ -31,6 +34,26 @@ export function JobPhotos() {
           <Link className="btn" to="/completed">‹ Back</Link>
         </div>
       </div>
+      {(j.expenses?.length ?? 0) > 0 && (
+        <div className="card pad expense-box">
+          <div className="row">
+            <h2 style={{ margin: 0 }}>Expense line{j.expenses!.length > 1 ? "s" : ""} for NetSuite</h2>
+            {me?.permissions.approveExpenses && (
+              j.expenses![0]!.enteredAt
+                ? <span className="row-wrap" style={{ gap: 8 }}><b className="ok-text">✓ Entered in NetSuite</b><button className="link-btn small" onClick={() => confirm("Unmark this job as entered in NetSuite?") && mark.mutate(false)}>Undo</button></span>
+                : <button className="btn pri" disabled={mark.isPending} onClick={() => mark.mutate(true)}>Mark entered in NetSuite</button>
+            )}
+          </div>
+          <table className="mt">
+            <thead><tr><th>Memo</th><th className="num">Amount</th></tr></thead>
+            <tbody>
+              {j.expenses!.map((e) => (
+                <tr key={e.id}><td>{e.description}</td><td className="num"><b>{(e.amountCents / 100).toFixed(2)}</b></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {j.photos.length === 0 && <div className="card empty-state">No photos on this job.</div>}
       {j.photos.map((p, i) => (
         <figure key={p.id} className="card photo-full" id={`photo-${i + 1}`}>

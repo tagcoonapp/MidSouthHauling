@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { daysOnUs, mapCategory, type MapCategory, type OfficeJob } from "../../../shared/domain";
+import { CALL_STATUS_LABELS, daysOnUs, mapCategory, type MapCategory, type OfficeJob } from "../../../shared/domain";
 import { addressLine, jobTypeLabel, money } from "../util";
 
 export const MAP_COLORS: Record<MapCategory, string> = {
@@ -58,10 +58,13 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
       const dot = document.createElement("div");
       dot.className = `map-pin${j.geoApprox ? " approx" : ""}`;
       dot.style.background = MAP_COLORS[cat];
-      dot.title = cb.current.onPinDrop ? `${j.customerName} · drag onto a day to schedule` : j.customerName;
       dot.dataset.jobId = j.id;
       const popup = makePopup(j, cat, days);
-      dot.addEventListener("pointerdown", (e) => startPinDrag(e, j, dot, m, popup));
+      // Hover: a quick card with the customer's info (no click needed).
+      const hover = makeHover(j, cat, days);
+      dot.addEventListener("mouseenter", () => { if (!popup.isOpen() && !document.querySelector(".pin-ghost")) hover.setLngLat([j.lng!, j.lat!]).addTo(m); });
+      dot.addEventListener("mouseleave", () => hover.remove());
+      dot.addEventListener("pointerdown", (e) => { hover.remove(); startPinDrag(e, j, dot, m, popup); });
       // The map closes popups on any click; keep the pin's own click from reaching it.
       dot.addEventListener("click", (e) => e.stopPropagation());
       markers.current.push(new maplibregl.Marker({ element: dot }).setLngLat([j.lng!, j.lat!]).addTo(m));
@@ -73,6 +76,23 @@ export function JobMap({ jobs, onOpen, onPinDrop, onPinHover, big, onToggleSize 
       fitted.current = true;
     }
   }, [jobs]);
+
+  function makeHover(j: OfficeJob, cat: MapCategory, days: number) {
+    const line = (label: string, v: string | null | undefined) => (v ? `<div><span class="hl">${label}</span> ${esc(v)}</div>` : "");
+    return new maplibregl.Popup({ offset: 12, closeButton: false, closeOnClick: false, className: "map-hover", maxWidth: "300px" }).setHTML(
+      `<b>${esc(j.customerName)}</b>` +
+        `<div class="hv-type" style="color:${MAP_COLORS[cat]}">${esc(jobTypeLabel(j.jobType))}${cat === "shop_build" && j.jobType !== "shop_build" ? " (shop-build lot)" : ""}</div>` +
+        line("Address", addressLine(j.address, j.city) + (j.geoApprox ? " (town only)" : "")) +
+        line("Phone", j.phone) +
+        line("Serial", j.serial) +
+        line("Building", j.building) +
+        line("Balance", j.balanceCents === null ? null : j.balanceCents ? money(j.balanceCents) : "Paid") +
+        line("Calls", `${CALL_STATUS_LABELS[j.callStatus]}${j.callAttempts ? ` (${j.callAttempts} attempt${j.callAttempts === 1 ? "" : "s"})` : ""}`) +
+        line("On us", days === 0 ? "Added today" : `${days} day${days === 1 ? "" : "s"}`) +
+        (j.officeNotes ? line("Notes", j.officeNotes.length > 120 ? j.officeNotes.slice(0, 120) + "…" : j.officeNotes) : "") +
+        `<div class="hv-hint">${cb.current.onPinDrop ? "Click for options · drag onto a day to schedule" : "Click for options"}</div>`,
+    );
+  }
 
   function makePopup(j: OfficeJob, cat: MapCategory, days: number) {
     const popup = new maplibregl.Popup({ offset: 12, closeButton: true }).setHTML(

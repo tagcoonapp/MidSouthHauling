@@ -8,6 +8,7 @@ import { useMe } from "../App";
 import { JobDrawer } from "./JobDrawer";
 import { useTeam } from "./Board";
 import { fmtDay } from "../util";
+import { expenseInstructions } from "../../../shared/expense-instructions";
 
 const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
@@ -19,6 +20,7 @@ export function Completed() {
   const drivers = (useTeam().data ?? []).filter((u) => u.role === "driver");
   const [open, setOpen] = useState<string | null>(null);
   const [month, setMonth] = useState<string>("");
+  const [copied, setCopied] = useState(false);
   const entered = useMutation({
     mutationFn: (v: { id: string; entered: boolean }) => api.post(`/jobs/${v.id}/entered`, { entered: v.entered }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["completed"] }),
@@ -38,10 +40,18 @@ export function Completed() {
     <div>
       <div className="top">
         <div><h1>Completed</h1><div className="muted">Approved jobs and their expenses, newest first.</div></div>
+        <div className="row-wrap" style={{ gap: 8 }}>
+        {canMark && (
+          <button className="btn small pri" title="Copies step-by-step instructions to paste into Claude in Chrome"
+            onClick={async () => { await navigator.clipboard?.writeText(expenseInstructions(location.origin)).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2500); }}>
+            {copied ? "✓ Copied: paste into Claude in Chrome" : "Copy NetSuite instructions for Claude in Chrome"}
+          </button>
+        )}
         <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: 180 }}>
           <option value="">All months</option>
           {months.map((m) => <option key={m} value={m}>{new Date(m + "-15").toLocaleDateString("en-US", { month: "long", year: "numeric" })}</option>)}
         </select>
+        </div>
       </div>
       <div className="kpis">
         <div className="card kpi"><div className="l">Expensed</div><div className="v">{usd(total)}</div></div>
@@ -72,7 +82,7 @@ export function Completed() {
                   {canMark && (
                     <td onClick={(e) => e.stopPropagation()}>
                       <label className="checkbox small">
-                        <input type="checkbox" checked={!!j.expenses?.[0]?.enteredAt} onChange={(e) => entered.mutate({ id: j.id, entered: e.target.checked })} />
+                        <input type="checkbox" aria-label={`In NetSuite: ${j.customerName}`} checked={!!j.expenses?.[0]?.enteredAt} onChange={(e) => entered.mutate({ id: j.id, entered: e.target.checked })} />
                         {j.expenses?.[0]?.enteredAt ? "Entered" : "Not yet"}
                       </label>
                     </td>
