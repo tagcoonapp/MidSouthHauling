@@ -16,6 +16,8 @@
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "midsouthhauling-files" }],
   "ratelimits": [{ "name": "LOGIN_LIMITER", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } }],
+  // 06:10 UTC = 12:10 AM Central (1:10 AM in summer): move unsubmitted jobs from past days back to the pipeline.
+  "triggers": { "crons": ["10 6 * * *"] },
   "vars": {
     "TIMEZONE": "America/Chicago"
   }

@@ -29,7 +29,7 @@ export function Team({ me }: { me: Me }) {
       <ErrorText error={toggle.error} />
       <div className="card table-wrap">
         <table>
-          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Color</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Color</th><th>Pay</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {(team.data ?? []).map((u) => (
               <tr key={u.id} style={{ opacity: u.active ? 1 : 0.5 }}>
@@ -37,6 +37,7 @@ export function Team({ me }: { me: Me }) {
                 <td>{u.username}</td>
                 <td>{ROLE_LABELS[u.role]}</td>
                 <td><i className="dot big" style={{ background: u.color }} /></td>
+                <td className="small">{u.role === "driver" ? payText(u) : <span className="muted">—</span>}</td>
                 <td>{u.active ? "Active" : "Turned off"}</td>
                 <td className="row-end">
                   <button className="btn small" onClick={() => setEditing(u)}>Edit</button>
@@ -53,6 +54,12 @@ export function Team({ me }: { me: Me }) {
   );
 }
 
+const payText = (u: TeamMember) =>
+  u.payHaulPct == null && u.payRepoPct == null ? <span className="muted">Not set</span>
+  : <>Hauls {u.payHaulPct ?? "—"}% · Repos {u.payRepoPct ?? "—"}%</>;
+
+const pctStr = (v: number | null | undefined) => (v == null ? "" : String(v));
+
 function PersonModal({ me, person, onClose }: { me: Me; person?: TeamMember; onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState(person?.name ?? "");
@@ -60,11 +67,16 @@ function PersonModal({ me, person, onClose }: { me: Me; person?: TeamMember; onC
   const [role, setRole] = useState<Role>(person?.role ?? "driver");
   const [color, setColor] = useState(person?.color ?? "");
   const [password, setPassword] = useState("");
+  const [haul, setHaul] = useState(pctStr(person?.payHaulPct));
+  const [repo, setRepo] = useState(pctStr(person?.payRepoPct));
   const save = useMutation({
-    mutationFn: () =>
-      person
-        ? api.patch(`/team/${person.id}`, { name, role, color: color || undefined, password: password || undefined })
-        : api.post("/team", { name, username, role, color: color || undefined, password }),
+    mutationFn: async () => {
+      const pay = role === "driver" ? { payHaulPct: haul.trim() === "" ? null : haul, payRepoPct: repo.trim() === "" ? null : repo } : {};
+      if (person) return api.patch(`/team/${person.id}`, { name, role, color: color || undefined, password: password || undefined, ...pay });
+      const made = await api.post<TeamMember>("/team", { name, username, role, color: color || undefined, password });
+      if (role === "driver" && (haul || repo)) await api.patch(`/team/${made.id}`, pay);
+      return made;
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["team"] }); onClose(); },
   });
   return (
@@ -84,6 +96,20 @@ function PersonModal({ me, person, onClose }: { me: Me; person?: TeamMember; onC
             <button type="button" key={c} className={`swatch${color === c ? " on" : ""}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={c} />
           ))}
         </div>
+        {role === "driver" && (
+          <>
+            <label>Driver pay (the driver never sees this)</label>
+            <div className="grid2">
+              <label className="small">Hauls: New, Used, Shop Build, INV (%)
+                <input value={haul} inputMode="decimal" placeholder="e.g. 25" onChange={(e) => setHaul(e.target.value.replace(/[^\d.]/g, ""))} />
+              </label>
+              <label className="small">Repos (%)
+                <input value={repo} inputMode="decimal" placeholder="e.g. 35" onChange={(e) => setRepo(e.target.value.replace(/[^\d.]/g, ""))} />
+              </label>
+            </div>
+            <p className="muted small">Percent of the NetSuite expense. Attempted repos and the $50 repo fuel charge pay nothing; escort fees aren't counted. If a customer paid to keep the building, the driver gets half of the $100.</p>
+          </>
+        )}
         <label>{person ? "New password (leave blank to keep)" : "Password (8+ characters)"}
           <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} required={!person} minLength={person ? undefined : 8} autoComplete="off" />
         </label>

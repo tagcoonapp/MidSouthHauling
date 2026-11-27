@@ -7,7 +7,10 @@ import { teamRoutes } from "./routes/team";
 import { pricingRoutes } from "./routes/pricing";
 import { importRoutes } from "./routes/import";
 import { noteRoutes } from "./routes/notes";
+import { schedulingNoteRoutes } from "./routes/scheduling-notes";
+import { accountingRoutes, fuelRoutes, truckCostRoutes } from "./routes/accounting";
 import { serveStatic } from "./static";
+import { rollOverMissedJobs } from "./rollover";
 import type { Env } from "./env";
 
 const app = new Hono<AppEnv>().basePath("/api");
@@ -28,6 +31,10 @@ app.route("/team", teamRoutes);
 app.route("/pricing", pricingRoutes);
 app.route("/import", importRoutes);
 app.route("/notes", noteRoutes);
+app.route("/scheduling-notes", schedulingNoteRoutes);
+app.route("/fuel", fuelRoutes);
+app.route("/truck-costs", truckCostRoutes);
+app.route("/accounting", accountingRoutes);
 app.route("/jobs", jobRoutes);
 app.route("/photos", photoRoutes);
 app.route("/", listRoutes);
@@ -44,5 +51,9 @@ export default {
     if (path === "/api" || path.startsWith("/api/")) return app.fetch(req, env, ctx);
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
     return serveStatic(req);
+  },
+  // Nightly (just after midnight Central): unsubmitted jobs from past days go back to the pipeline.
+  scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(rollOverMissedJobs(env).then((n) => console.log(`rolled ${n} missed jobs back to the pipeline`)));
   },
 } satisfies ExportedHandler<Env>;

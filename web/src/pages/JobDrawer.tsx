@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CALL_STATUSES, JOB_TYPES, type CallStatus, type JobType, type Me, type OfficeJob, type TeamMember } from "../../../shared/domain";
+import { CALL_STATUSES, JOB_TYPES, schedulingNotesFor, type CallStatus, type JobType, type Me, type OfficeJob, type TeamMember } from "../../../shared/domain";
 import { api } from "../api";
 import { CallPill, ErrorText, PhotoGrid, StagePill } from "../components/bits";
 import { DownloadPhotos } from "../components/DownloadPhotos";
+import { AddSchedulingNote, NotesWarning, useSchedulingNotes } from "./SchedulingNotes";
 import { callLabel, fmtDateTime, fmtDay, jobTypeLabel, mapsUrl, money } from "../util";
 
 export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; drivers: TeamMember[]; onClose: () => void }) {
@@ -40,6 +41,7 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
 
   const job = q.data;
   const canEdit = me.permissions.editSchedule;
+  const schedNotes = useSchedulingNotes(canEdit).data ?? [];
   const locked = job ? job.stage === "submitted" || job.stage === "approved" : true;
   const field = (k: keyof OfficeJob, label: string, opts: { area?: boolean; money?: boolean } = {}) => {
     if (!job) return null;
@@ -127,6 +129,14 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
                     </div>
                   </div>
                 )}
+              </section>
+            )}
+
+            {canEdit && (
+              <section className="drawer-sec">
+                <h3>Scheduling notes <span className="muted small">(office only, drivers don't see these)</span></h3>
+                <NotesWarning notes={schedulingNotesFor(schedNotes, job)} />
+                <AddSchedulingNote jobs={[]} fixedJob={job} />
               </section>
             )}
 

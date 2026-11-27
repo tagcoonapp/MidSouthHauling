@@ -10,6 +10,7 @@ import {
   isJobType,
   amountToCollect,
   isPaymentMethod,
+  isKeptPaidTo,
   missingDriverAnswers,
   NO_EXPENSE,
   permissionsFor,
@@ -20,6 +21,7 @@ import {
 import { draftForJob, loadPricing } from "../pricing-store";
 import { readJobPhotos } from "../photo-reader";
 import { geocodePending } from "../geocode";
+import { rollOverMissedJobs } from "../rollover";
 import { NOTE_SELECT, endOfDay, toNote } from "./notes";
 import { newId, requirePermission } from "../auth";
 import { addDays, isIsoDate, localToday } from "../dates";
@@ -131,6 +133,7 @@ function parseBalance(v: unknown): number | null | undefined {
 // ---------- Office: board (pipeline + calendar) ----------
 
 jobRoutes.get("/board", requirePermission("viewPipeline"), async (c) => {
+  await rollOverMissedJobs(c.env);
   const today = localToday(c.env.TIMEZONE);
   const from = isIsoDate(c.req.query("from")) ? c.req.query("from")! : today;
   const to = isIsoDate(c.req.query("to")) ? c.req.query("to")! : addDays(from, 6);
@@ -238,7 +241,7 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
   if (b.sortOrder !== undefined && Number.isInteger(b.sortOrder)) set("sort_order", b.sortOrder);
 
   // Expense review fields: scheduler only, and frozen once approved.
-  const reviewKeys = ["moody", "miles", "lotTakenTo", "reportedCustomerName", "amountOverride", "collected", "collectedMethod", "escort", "keptPaidInFull"];
+  const reviewKeys = ["moody", "miles", "lotTakenTo", "reportedCustomerName", "amountOverride", "collected", "collectedMethod", "escort", "keptPaidInFull", "keptPaidTo"];
   if (reviewKeys.some((k) => b[k] !== undefined)) {
     if (!permissionsFor(user.role).approveExpenses) return c.json({ error: "Only the scheduler can change expense details." }, 403);
     if (job.stage === "approved") return c.json({ error: "This job is approved; its expense is locked." }, 400);
@@ -262,6 +265,10 @@ jobRoutes.patch("/:id", requirePermission("editSchedule"), async (c) => {
       set("escort_cents", amt);
     }
     if (typeof b.keptPaidInFull === "boolean") set("kept_paid_in_full", b.keptPaidInFull ? 1 : 0);
+    if (b.keptPaidTo !== undefined) {
+      if (b.keptPaidTo !== null && !isKeptPaidTo(b.keptPaidTo)) return c.json({ error: "Pick cash to driver or paid to BHR." }, 400);
+      set("kept_paid_to", b.keptPaidTo);
+    }
     if (b.amountOverride !== undefined) {
       const amt = parseBalance(b.amountOverride);
       if (amt === undefined) return c.json({ error: "Amount must be dollars." }, 400);
@@ -411,6 +418,11 @@ jobRoutes.patch("/:id/work", requirePermission("submitJobs"), async (c) => {
   if (b.keptPaidInFull !== undefined) {
     if (b.keptPaidInFull !== null && typeof b.keptPaidInFull !== "boolean") return c.json({ error: "Answer yes or no." }, 400);
     sets.push("kept_paid_in_full = ?"); vals.push(b.keptPaidInFull === null ? null : b.keptPaidInFull ? 1 : 0);
+    if (b.keptPaidInFull !== true) sets.push("kept_paid_to = NULL");
+  }
+  if (b.keptPaidTo !== undefined) {
+    if (b.keptPaidTo !== null && !isKeptPaidTo(b.keptPaidTo)) return c.json({ error: "Pick cash to driver or paid to BHR." }, 400);
+    sets.push("kept_paid_to = ?"); vals.push(b.keptPaidTo);
   }
   if (!sets.length) return c.json({ error: "Nothing to change." }, 400);
   sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
@@ -456,6 +468,7 @@ jobRoutes.post("/:id/submit", requirePermission("submitJobs"), async (c) => {
     jobType: job.job_type as JobType, reportedCustomerName: job.reported_customer_name, miles: job.miles, lotTakenTo: job.lot_taken_to,
     collectCents: amountToCollect(job.job_type as JobType, job.balance_cents), collectedCents: job.collected_cents, collectedMethod: job.collected_method,
     keptPaidInFull: job.kept_paid_in_full === null ? null : !!job.kept_paid_in_full,
+    keptPaidTo: isKeptPaidTo(job.kept_paid_to) ? job.kept_paid_to : null,
   });
   if (missing.length) return c.json({ error: `Fill in: ${missing.join(", ")}.`, missing }, 400);
   await c.env.DB.prepare(
@@ -535,6 +548,7 @@ export const listRoutes = new Hono<AppEnv>();
 
 /** A driver's own schedule for a date range. Never includes pipeline jobs or other drivers. */
 listRoutes.get("/my/schedule", async (c) => {
+  await rollOverMissedJobs(c.env);
   const user = c.get("user");
   const today = localToday(c.env.TIMEZONE);
   const from = isIsoDate(c.req.query("from")) ? c.req.query("from")! : today;

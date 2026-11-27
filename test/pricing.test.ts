@@ -80,7 +80,9 @@ describe("expense rules", () => {
     expect(d.lines.map((l) => l.amountCents)).toEqual([5000]);
     expect(d.problems).toEqual([]);
     expect(draft({ jobType: "attempted_repo", serial: "", keptPaidInFull: true }).lines.map((l) => l.amountCents)).toEqual([10000]);
-    expect(draft({ jobType: "attempted_repo", serial: "" }).problems[0]).toContain("paid in full");
+    // Unticked (optional) = a plain $50 attempt, no warning.
+    expect(draft({ jobType: "attempted_repo", serial: "" }).lines.map((l) => l.amountCents)).toEqual([5000]);
+    expect(draft({ jobType: "attempted_repo", serial: "" }).problems).toEqual([]);
   });
   it("flags missing pieces instead of guessing", () => {
     expect(draft({ serial: "UXX-1-1010-1" }).problems[0]).toContain("XX 10x10 isn't on the price sheet");

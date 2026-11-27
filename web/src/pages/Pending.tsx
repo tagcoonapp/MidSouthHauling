@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import type { OfficeJob } from "../../../shared/domain";
+import { KEPT_PAID_TO, KEPT_PAID_TO_LABELS, type OfficeJob } from "../../../shared/domain";
 import { sizeLabel } from "../../../shared/pricing";
 import { api, ApiError } from "../api";
 import { ErrorText, JobTypePill, PhotoGrid } from "../components/bits";
@@ -187,10 +187,20 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
               </label>
             )}
             {j.jobType === "attempted_repo" && (
-              <label className="checkbox span2">
-                <input type="checkbox" checked={j.keptPaidInFull === true} onChange={(e) => patch.mutate({ keptPaidInFull: e.target.checked })} />
-                <span>Customer paid in full to keep the building (pays more)</span>
-              </label>
+              <>
+                <label className="checkbox">
+                  <input type="checkbox" checked={j.keptPaidInFull === true} onChange={(e) => patch.mutate({ keptPaidInFull: e.target.checked, ...(e.target.checked ? {} : { keptPaidTo: null }) })} />
+                  <span>Customer paid to keep the building (bills $100)</span>
+                </label>
+                {j.keptPaidInFull === true && (
+                  <label>Paid how
+                    <select value={j.keptPaidTo ?? ""} onChange={(e) => patch.mutate({ keptPaidTo: e.target.value || null })}>
+                      <option value="">Not answered</option>
+                      {KEPT_PAID_TO.map((k) => <option key={k} value={k}>{KEPT_PAID_TO_LABELS[k]}</option>)}
+                    </select>
+                  </label>
+                )}
+              </>
             )}
             <label>Custom amount ($)
               <input value={override} inputMode="decimal" placeholder="Leave blank to use the calculation"

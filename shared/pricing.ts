@@ -228,12 +228,11 @@ export function draftExpenses(input: ExpenseInput, prices: PriceRow[], repoRates
     }
     case "attempted_repo": {
       const kept = input.keptPaidInFull === true;
-      if (input.keptPaidInFull === null || input.keptPaidInFull === undefined) problems.push("Driver didn't say whether the customer paid in full to keep the building.");
       lines.push({
         kind: "main",
-        description: memo(kept ? "customer paid in full, kept building" : ""),
+        description: memo(kept ? "customer paid to keep building" : ""),
         amountCents: kept ? settings.attemptedRepoPaidCents : settings.attemptedRepoCents,
-        basis: kept ? "Attempted repo, customer paid the full balance to keep the building" : "Attempted repo",
+        basis: kept ? "Attempted repo, customer paid to keep the building" : "Attempted repo",
       });
       break;
     }

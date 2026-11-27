@@ -44,6 +44,12 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export const PAYMENT_LABELS: Record<PaymentMethod, string> = { cash: "Cash", check: "Check", card: "Card (QR link)" };
 export const isPaymentMethod = (v: unknown): v is PaymentMethod => typeof v === "string" && (PAYMENT_METHODS as readonly string[]).includes(v);
 
+/** Attempted repo, customer paid to keep the building: who took the payment. */
+export const KEPT_PAID_TO = ["driver", "bhr"] as const;
+export type KeptPaidTo = (typeof KEPT_PAID_TO)[number];
+export const KEPT_PAID_TO_LABELS: Record<KeptPaidTo, string> = { driver: "Cash to driver", bhr: "Paid to BHR" };
+export const isKeptPaidTo = (v: unknown): v is KeptPaidTo => v === "driver" || v === "bhr";
+
 /** The amount the driver must collect on this job, or null if nothing is due. */
 export function amountToCollect(jobType: JobType, balanceCents: number | null): number | null {
   return COLLECTS_BALANCE.has(jobType) && balanceCents !== null && balanceCents > 0 ? balanceCents : null;
@@ -54,6 +60,7 @@ export function missingDriverAnswers(j: {
   jobType: JobType; reportedCustomerName: string; miles: number | null; lotTakenTo: string;
   collectCents: number | null; collectedCents: number | null; collectedMethod: string | null;
   keptPaidInFull?: boolean | null;
+  keptPaidTo?: KeptPaidTo | null;
 }): string[] {
   const q = DRIVER_QUESTIONS[j.jobType];
   const out: string[] = [];
@@ -62,7 +69,8 @@ export function missingDriverAnswers(j: {
   if (q.miles && (j.miles === null || !(j.miles >= 0))) out.push("miles");
   if (q.lot && !j.lotTakenTo.trim()) out.push("lot taken to");
   if (q.amountGiven && (j.collectedCents === null || j.collectedCents < 0)) out.push("how much was given");
-  if (q.keptPaid && (j.keptPaidInFull === null || j.keptPaidInFull === undefined)) out.push("whether the customer paid in full");
+  // Attempted repo: "customer paid to keep the building" is optional, but if ticked we need to know who got the money.
+  if (q.keptPaid && j.keptPaidInFull === true && !isKeptPaidTo(j.keptPaidTo)) out.push("whether the customer paid cash to you or paid BHR");
   if (j.collectCents !== null) {
     if (j.collectedCents === null || j.collectedCents < 0) out.push("amount collected");
     if (!isPaymentMethod(j.collectedMethod) && !(j.collectedCents === 0)) out.push("how it was paid");
@@ -191,6 +199,9 @@ export interface TeamMember {
   role: Role;
   color: string;
   active: boolean;
+  /** Office only: driver pay rates in percent of the expense. */
+  payHaulPct?: number | null;
+  payRepoPct?: number | null;
 }
 
 export interface Photo {
@@ -229,6 +240,7 @@ export interface DriverJob {
   collectedRef: string;
   /** Attempted repo: customer paid the full balance to keep the building. */
   keptPaidInFull: boolean | null;
+  keptPaidTo: KeptPaidTo | null;
   /** Repos: other possible addresses from a TLO search, one per line. */
   tloNotes: string;
   /** Order within the day (shared with calendar notes). */
@@ -262,6 +274,8 @@ export interface OfficeJob extends DriverJob {
   geoApprox: boolean;
   /** Set when the last full NetSuite import didn't list this open job. */
   missingFromNetsuiteAt: string | null;
+  /** Back in the pipeline because it wasn't submitted on this day. */
+  missedDate?: string | null;
   events?: JobEvent[];
   /** Live expense draft (submitted jobs, scheduler only). */
   draft?: import("./pricing").ExpenseDraft & { nameMatches: boolean | null; photoChecks: import("./photo-read").PhotoCheck[]; serialFromPhoto: boolean };
@@ -277,4 +291,100 @@ export interface ApprovedExpense {
   amountCents: number;
   approvedAt: string;
   enteredAt: string | null;
+}
+
+// ---------- Receipts and accounting ----------
+
+/** A fuel receipt. Drivers get their own; the office gets everyone's. */
+export interface FuelReceipt {
+  id: string;
+  driverId: string;
+  driverName?: string;
+  driverColor?: string;
+  date: string;
+  amountCents: number | null;
+  gallons: number | null;
+  odometer: number | null;
+  station: string;
+  notes: string;
+  photoUrl: string | null;
+  aiStatus: string | null;
+  aiError: string | null;
+  /** Things that don't line up between what the driver typed and the photo. Office only. */
+  checks?: string[];
+  createdAt: string;
+}
+
+export const TRUCK_COST_CATEGORIES = ["repair", "tires", "maintenance", "insurance", "registration", "other"] as const;
+export type TruckCostCategory = (typeof TRUCK_COST_CATEGORIES)[number];
+export const TRUCK_COST_LABELS: Record<TruckCostCategory, string> = {
+  repair: "Repair", tires: "Tires", maintenance: "Maintenance", insurance: "Insurance", registration: "Registration", other: "Other",
+};
+export const isTruckCostCategory = (v: unknown): v is TruckCostCategory => typeof v === "string" && (TRUCK_COST_CATEGORIES as readonly string[]).includes(v);
+
+export interface TruckCost {
+  id: string;
+  date: string;
+  category: TruckCostCategory;
+  vehicle: string;
+  driverId: string | null;
+  driverName: string | null;
+  vendor: string;
+  description: string;
+  amountCents: number;
+  photoUrl: string | null;
+  createdAt: string;
+}
+
+/** One approved job with its pay, for the accounting page. */
+export interface PayJob {
+  id: string;
+  date: string;
+  customerName: string;
+  jobType: JobType;
+  serial: string;
+  driverId: string | null;
+  driverName: string | null;
+  driverColor: string | null;
+  miles: number | null;
+  expensedCents: number;
+  fuelLineCents: number;
+  payCents: number | null;
+  payBasis: string;
+  payPaidAt: string | null;
+  collectedCents: number | null;
+  collectedMethod: string | null;
+  keptPaidTo: KeptPaidTo | null;
+}
+
+export interface AccountingReport {
+  from: string;
+  to: string;
+  jobs: PayJob[];
+  fuel: FuelReceipt[];
+  truckCosts: TruckCost[];
+  drivers: { id: string; name: string; color: string; payHaulPct: number | null; payRepoPct: number | null }[];
+  /** Miles from odometer readings per driver in the period. */
+  odometerMiles: Record<string, number>;
+}
+
+// ---------- Scheduling notes (office only) ----------
+
+export interface SchedulingNote {
+  id: string;
+  jobId: string | null;
+  customerName: string;
+  text: string;
+  author: string;
+  createdAt: string;
+  doneAt: string | null;
+  doneBy: string | null;
+  jobStage: string | null;
+  jobDate: string | null;
+}
+
+/** Open scheduling notes that belong to a job: linked to it, or written for the same customer name. */
+export function schedulingNotesFor(notes: SchedulingNote[], job: { id: string; customerName: string }): SchedulingNote[] {
+  const name = baseCustomerName(job.customerName).toLowerCase();
+  return notes.filter((n) => !n.doneAt && (n.jobId ? n.jobId === job.id : !!name && baseCustomerName(n.customerName).toLowerCase() === name));
 }

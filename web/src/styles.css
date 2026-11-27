@@ -401,3 +401,40 @@ code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.
 .photo-full figcaption { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .photo-full img { width: 100%; height: auto; display: block; border-radius: 8px; background: #eee; }
 .copyrow .c-wrap { gap: 6px; }
+
+/* ---------- Fuel receipts and accounting ---------- */
+.warn-box { color: #92400e; background: #fffbeb; border: 1px solid #fde68a; padding: 10px 12px; border-radius: 8px; }
+.big-btn { width: 100%; padding: 14px; font-size: 16px; }
+.danger-text { color: var(--bad); }
+.link-btn { background: none; border: 0; padding: 0; color: var(--pri); text-decoration: underline; }
+.receipt-preview { display: flex; flex-direction: column; align-items: center; gap: 4px; background: #fff; border: 1px dashed var(--line); border-radius: 10px; padding: 8px; color: var(--mute); }
+.receipt-preview img { max-height: 220px; max-width: 100%; border-radius: 6px; }
+.fuel-card { cursor: default; }
+.acct-period { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.acct-period label { font-size: 12.5px; color: var(--mute); display: flex; flex-direction: column; gap: 4px; }
+.acct-period input, .acct-period select { width: auto; padding: 7px 10px; }
+.acct-sec { margin-top: 22px; }
+.acct-sec > .row { margin-bottom: 8px; }
+.acct-sec h2 { margin: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.num b { font-weight: 650; }
+.kpi .sub { font-size: 12px; color: var(--mute); margin-top: 2px; }
+.kpi.neg .v { color: var(--bad); }
+.thumb-link img { width: 38px; height: 38px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
+.inline-edit { width: 90px; padding: 5px 8px; }
+.pay-driver { border-left: 4px solid var(--line); }
+tr.total-row td { border-top: 2px solid var(--line); font-weight: 650; }
+
+/* ---------- Scheduling notes (office only) ---------- */
+.sched-layout { display: grid; grid-template-columns: 340px 1fr; gap: 18px; align-items: start; }
+@media (max-width: 900px) { .sched-layout { grid-template-columns: 1fr; } }
+.sched-warn { background: #fffbeb; border: 1px solid #fde68a; color: #78350f; border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+.sched-warn-item { background: #fff; border-radius: 6px; padding: 6px 8px; }
+.sched-badge { margin-left: 6px; font-size: 13px; }
+.badge.soft { background: rgba(255,255,255,.25); color: #fff; }
+.drag-notes {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 3000; max-width: 520px; width: calc(100% - 32px);
+  background: #fffbeb; border: 1px solid #f59e0b; color: #78350f; border-radius: 12px; padding: 10px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18); display: grid; gap: 4px; pointer-events: none;
+}
+.missed-tag { display: inline-block; margin: 4px 0 2px; font-size: 12px; font-weight: 600; color: #9a3412; background: #ffedd5; border-radius: 6px; padding: 2px 7px; }

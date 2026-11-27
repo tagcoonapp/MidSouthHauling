@@ -14,6 +14,9 @@ import { Account } from "./pages/Account";
 import { Pricing } from "./pages/Pricing";
 import { ImportPage } from "./pages/Import";
 import { JobPhotos } from "./pages/JobPhotos";
+import { DriverFuel } from "./pages/DriverFuel";
+import { Accounting } from "./pages/Accounting";
+import { SchedulingNotes } from "./pages/SchedulingNotes";
 
 export function useMe() {
   return useQuery({
@@ -49,6 +52,7 @@ export function App() {
         <Route path="/" element={<DriverHome me={user} />} />
         <Route path="/log" element={<DriverHome me={user} tab="log" />} />
         <Route path="/week" element={<DriverHome me={user} tab="week" />} />
+        <Route path="/fuel" element={<DriverFuel me={user} />} />
         <Route path="/job/:id" element={<DriverJobPage />} />
         <Route path="/account" element={<Account me={user} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -62,6 +66,8 @@ export function App() {
         <Route path="/" element={<Board me={user} />} />
         {user.permissions.viewPendingExpenses && <Route path="/pending" element={<Pending />} />}
         <Route path="/completed" element={<Completed />} />
+        {user.permissions.editSchedule && <Route path="/notes" element={<SchedulingNotes />} />}
+        {user.permissions.viewFinancial && <Route path="/accounting" element={<Accounting />} />}
         {user.permissions.editSchedule && <Route path="/import" element={<ImportPage />} />}
         <Route path="/photos/:id" element={<JobPhotos />} />
         {user.permissions.approveExpenses && <Route path="/pricing" element={<Pricing />} />}

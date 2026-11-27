@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { DRIVER_QUESTIONS, JOB_TYPES, PAYMENT_LABELS, PAYMENT_METHODS, missingDriverAnswers, type DriverJob, type JobType, type PaymentMethod } from "../../../shared/domain";
+import { DRIVER_QUESTIONS, JOB_TYPES, KEPT_PAID_TO, KEPT_PAID_TO_LABELS, PAYMENT_LABELS, PAYMENT_METHODS, missingDriverAnswers, type DriverJob, type JobType, type KeptPaidTo, type PaymentMethod } from "../../../shared/domain";
 import { api } from "../api";
 import { ErrorText, JobTypePill, PhotoGrid, StagePill } from "../components/bits";
 import { fmtDay, jobTypeLabel, mapsUrl, addressLine } from "../util";
 
-type WorkBody = { jobType?: JobType; driverNotes?: string; reportedCustomerName?: string; miles?: number | null; lotTakenTo?: string; collected?: string | null; collectedMethod?: PaymentMethod | null; collectedRef?: string; keptPaidInFull?: boolean };
+type WorkBody = { jobType?: JobType; driverNotes?: string; reportedCustomerName?: string; miles?: number | null; lotTakenTo?: string; collected?: string | null; collectedMethod?: PaymentMethod | null; collectedRef?: string; keptPaidInFull?: boolean; keptPaidTo?: KeptPaidTo | null };
 const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 /** Text fields the driver fills in. Saved when they leave the box (and before submit). */
@@ -46,6 +46,13 @@ export function DriverJobPage() {
 
   const work = useMutation({
     mutationFn: (body: WorkBody) => api.patch<DriverJob>(`/jobs/${id}/work`, body),
+    // Show taps (checkbox, buttons) right away; the server's answer replaces this.
+    onMutate: (body) => {
+      const instant: Partial<DriverJob> = {};
+      if (body.keptPaidInFull !== undefined) { instant.keptPaidInFull = body.keptPaidInFull; if (!body.keptPaidInFull) instant.keptPaidTo = null; }
+      if (body.keptPaidTo !== undefined) instant.keptPaidTo = body.keptPaidTo;
+      if (Object.keys(instant).length) qc.setQueryData(["job", id], (old: DriverJob | undefined) => (old ? { ...old, ...instant } : old));
+    },
     onSuccess: (job) => { refresh(job); setSaved(fromJob(job)); },
   });
   const save = () => { const body = changes(a, saved); if (Object.keys(body).length) work.mutate(body); };
@@ -69,7 +76,7 @@ export function DriverJobPage() {
   const missing = missingDriverAnswers({
     jobType: job.jobType, reportedCustomerName: a.name, miles: Number.isFinite(milesNum) ? milesNum : null, lotTakenTo: a.lot,
     collectCents: job.collectCents, collectedCents: collectedNum !== null && Number.isFinite(collectedNum) ? collectedNum : null, collectedMethod: job.collectedMethod,
-    keptPaidInFull: job.keptPaidInFull,
+    keptPaidInFull: job.keptPaidInFull, keptPaidTo: job.keptPaidTo,
   });
   const unsaved = Object.keys(changes(a, saved)).length > 0;
 
@@ -172,11 +179,20 @@ export function DriverJobPage() {
 
       {ask.keptPaid && (
         <div className="field">
-          <label>Did the customer pay the full balance to keep the building?</label>
-          <div className="seg">
-            <button type="button" disabled={!editable} className={job.keptPaidInFull === true ? "on" : ""} onClick={() => work.mutate({ keptPaidInFull: true })}>Yes, paid in full</button>
-            <button type="button" disabled={!editable} className={job.keptPaidInFull === false ? "on" : ""} onClick={() => work.mutate({ keptPaidInFull: false })}>No</button>
-          </div>
+          <label className="checkbox">
+            <input type="checkbox" disabled={!editable} checked={job.keptPaidInFull === true} onChange={(e) => work.mutate({ keptPaidInFull: e.target.checked })} />
+            <span>Customer paid to keep the building</span>
+          </label>
+          {job.keptPaidInFull === true && (
+            <>
+              <label style={{ marginTop: 12 }}>How did they pay?</label>
+              <div className="seg">
+                {KEPT_PAID_TO.map((k) => (
+                  <button key={k} type="button" disabled={!editable} className={job.keptPaidTo === k ? "on" : ""} onClick={() => work.mutate({ keptPaidTo: k })}>{KEPT_PAID_TO_LABELS[k]}</button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -32,6 +32,7 @@ export function DriverShell({ me, children }: { me: Me; children: React.ReactNod
         <NavLink to="/" end>Today</NavLink>
         <NavLink to="/week">This week</NavLink>
         <NavLink to="/log">My log</NavLink>
+        <NavLink to="/fuel">Fuel</NavLink>
       </nav>
       {children}
     </div>

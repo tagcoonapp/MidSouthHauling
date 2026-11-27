@@ -1,4 +1,4 @@
-import { amountToCollect, isPaymentMethod, type CallStatus, type DriverJob, type JobStage, type JobType, type OfficeJob, type Photo } from "../shared/domain";
+import { amountToCollect, isKeptPaidTo, isPaymentMethod, type CallStatus, type DriverJob, type JobStage, type JobType, type OfficeJob, type Photo } from "../shared/domain";
 import type { PhotoRead, PhotoReadState, PhotoReadStatus } from "../shared/photo-read";
 
 export function photoReadOf(r: JobRow): PhotoReadState {
@@ -45,8 +45,11 @@ export interface JobRow {
   collected_ref: string;
   escort_cents: number | null;
   kept_paid_in_full: number | null;
+  kept_paid_to?: string | null;
+  pay_paid_at?: string | null;
   tlo_notes?: string;
   missing_from_netsuite_at?: string | null;
+  missed_date?: string | null;
   lat?: number | null;
   lng?: number | null;
   geo_approx?: number;
@@ -95,6 +98,7 @@ export function toDriverJob(r: JobRow, photos: PhotoRow[]): DriverJob {
     collectedMethod: isPaymentMethod(r.collected_method) ? r.collected_method : null,
     collectedRef: r.collected_ref ?? "",
     keptPaidInFull: r.kept_paid_in_full === null || r.kept_paid_in_full === undefined ? null : !!r.kept_paid_in_full,
+    keptPaidTo: isKeptPaidTo(r.kept_paid_to) ? r.kept_paid_to : null,
     tloNotes: r.tlo_notes ?? "",
     dayOrder: r.sort_order ?? 0,
   };
@@ -118,5 +122,6 @@ export function toOfficeJob(r: JobRow, photos: PhotoRow[]): OfficeJob {
     lng: r.lng ?? null,
     geoApprox: !!r.geo_approx,
     missingFromNetsuiteAt: r.missing_from_netsuite_at ?? null,
+    missedDate: r.stage === "pipeline" ? r.missed_date ?? null : null,
   };
 }

@@ -13,6 +13,8 @@ interface UserRow {
   role: string;
   color: string;
   active: number;
+  pay_haul_pct: number | null;
+  pay_repo_pct: number | null;
 }
 
 const toMember = (r: UserRow): TeamMember => ({
@@ -22,6 +24,8 @@ const toMember = (r: UserRow): TeamMember => ({
   role: r.role as TeamMember["role"],
   color: r.color,
   active: !!r.active,
+  payHaulPct: r.pay_haul_pct,
+  payRepoPct: r.pay_repo_pct,
 });
 
 const isColor = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
@@ -29,7 +33,7 @@ const isColor = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f
 /** Office roles need the driver list to schedule; only the scheduler sees usernames of everyone. */
 teamRoutes.get("/", requirePermission("editSchedule"), async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, name, username, role, color, active FROM users ORDER BY active DESC, role, name",
+    "SELECT id, name, username, role, color, active, pay_haul_pct, pay_repo_pct FROM users ORDER BY active DESC, role, name",
   ).all<UserRow>();
   return c.json(results.map(toMember));
 });
@@ -60,7 +64,7 @@ teamRoutes.post("/", requirePermission("manageTeam"), async (c) => {
     if (String(e).includes("UNIQUE")) return c.json({ error: "That username is taken." }, 409);
     throw e;
   }
-  const row = await c.env.DB.prepare("SELECT id, name, username, role, color, active FROM users WHERE id = ?").bind(id).first<UserRow>();
+  const row = await c.env.DB.prepare("SELECT id, name, username, role, color, active, pay_haul_pct, pay_repo_pct FROM users WHERE id = ?").bind(id).first<UserRow>();
   return c.json(toMember(row!), 201);
 });
 
@@ -81,6 +85,12 @@ teamRoutes.patch("/:id", requirePermission("manageTeam"), async (c) => {
     if (id === me.id && !body.active) return c.json({ error: "You can't turn off your own account." }, 400);
     sets.push("active = ?"); vals.push(body.active ? 1 : 0);
   }
+  for (const [k, col] of [["payHaulPct", "pay_haul_pct"], ["payRepoPct", "pay_repo_pct"]] as const) {
+    if (body[k] === undefined) continue;
+    const v = body[k] === null || body[k] === "" ? null : Number(body[k]);
+    if (v !== null && !(Number.isFinite(v) && v >= 0 && v <= 100)) return c.json({ error: "Pay must be a percent from 0 to 100." }, 400);
+    sets.push(`${col} = ?`); vals.push(v);
+  }
   let resetPassword = false;
   if (typeof body.password === "string" && body.password) {
     if (body.password.length < MIN_PASSWORD) return c.json({ error: `Password must be at least ${MIN_PASSWORD} characters.` }, 400);
@@ -92,6 +102,6 @@ teamRoutes.patch("/:id", requirePermission("manageTeam"), async (c) => {
   const res = await c.env.DB.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, id).run();
   if (!res.meta.changes) return c.json({ error: "Not found." }, 404);
   if (resetPassword || body.active === false) await endAllSessionsFor(c.env.DB, id);
-  const row = await c.env.DB.prepare("SELECT id, name, username, role, color, active FROM users WHERE id = ?").bind(id).first<UserRow>();
+  const row = await c.env.DB.prepare("SELECT id, name, username, role, color, active, pay_haul_pct, pay_repo_pct FROM users WHERE id = ?").bind(id).first<UserRow>();
   return c.json(toMember(row!));
 });
