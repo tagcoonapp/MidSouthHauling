@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import type { OfficeJob } from "../../../shared/domain";
 import { api } from "../api";
 import { JobTypePill } from "../components/bits";
@@ -53,7 +54,7 @@ export function Completed() {
       ) : (
         <div className="card table-wrap">
           <table>
-            <thead><tr><th>Job date</th><th>Customer</th><th>Type</th><th>Serial #</th><th>Driver</th><th>Collected</th><th>Expense</th>{canMark && <th>In NetSuite</th>}</tr></thead>
+            <thead><tr><th>Job date</th><th>Customer</th><th>Type</th><th>Serial #</th><th>Driver</th><th>Collected</th><th>Expense</th><th>Photos</th>{canMark && <th>In NetSuite</th>}</tr></thead>
             <tbody>
               {jobs.map((j) => (
                 <tr key={j.id} className="clickable" onClick={() => setOpen(j.id)}>
@@ -67,6 +68,7 @@ export function Completed() {
                     {j.jobType === "private_move" ? <span className="muted">Not expensed</span> : <b>{usd(sum(j))}</b>}
                     {(j.expenses?.length ?? 0) > 1 && <div className="muted small">{j.expenses!.map((e) => (e.kind === "fuel" ? `fuel ${usd(e.amountCents)}` : usd(e.amountCents))).join(" + ")}</div>}
                   </td>
+                  <td onClick={(e) => e.stopPropagation()}>{j.photos.length ? <Link to={`/photos/${j.id}`}>🖼 Photos ({j.photos.length})</Link> : <span className="muted">—</span>}</td>
                   {canMark && (
                     <td onClick={(e) => e.stopPropagation()}>
                       <label className="checkbox small">

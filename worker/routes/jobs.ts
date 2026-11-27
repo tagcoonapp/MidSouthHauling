@@ -604,7 +604,15 @@ photoRoutes.get("/:id", async (c) => {
   if (!found) return c.json({ error: "Not found." }, 404);
   const obj = await c.env.FILES.get(found.photo.r2_key);
   if (!obj) return c.json({ error: "Not found." }, 404);
-  return new Response(obj.body, { headers: { "content-type": found.photo.content_type, "cache-control": "private, max-age=86400" } });
+  const headers: Record<string, string> = { "content-type": found.photo.content_type, "cache-control": "private, max-age=86400" };
+  // ?download=Linda-Hargrove-1 saves the photo as a file with that name (for attaching to the NetSuite expense).
+  const dl = c.req.query("download");
+  if (dl !== undefined) {
+    const ext = found.photo.content_type.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
+    const name = (dl || "photo").replace(/[^A-Za-z0-9 _-]/g, "").trim().replace(/\s+/g, "-").slice(0, 80) || "photo";
+    headers["content-disposition"] = `attachment; filename="${name}.${ext}"`;
+  }
+  return new Response(obj.body, { headers });
 });
 
 photoRoutes.delete("/:id", requirePermission("submitJobs"), async (c) => {

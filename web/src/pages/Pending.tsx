@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import type { OfficeJob } from "../../../shared/domain";
 import { sizeLabel } from "../../../shared/pricing";
 import { api, ApiError } from "../api";
 import { ErrorText, JobTypePill, PhotoGrid } from "../components/bits";
+import { DownloadPhotos } from "../components/DownloadPhotos";
 import { fmtDateTime, fmtDay, money } from "../util";
 
 /** Scheduler only: submitted jobs with the drafted expense, checks, and Approve / Send back. */
@@ -206,6 +208,9 @@ function PendingCard({ job: j }: { job: OfficeJob }) {
               {date && <CopyRow label="Date" value={date} />}
               <CopyRow label="Amount" value={(l.amountCents / 100).toFixed(2)} big />
               <CopyRow label="Memo" value={l.description} />
+              {i === 0 && j.photos.length > 0 && (
+                <div className="copyrow"><div className="k">Photos</div><div className="v">{j.photos.length} attached to this job</div><div className="c-wrap"><Link className="btn small" to={`/photos/${j.id}`}>🖼 Photos page</Link><DownloadPhotos job={j} small /></div></div>
+              )}
               <div className="muted small basis">{l.basis}</div>
             </div>
           ))}

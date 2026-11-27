@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CALL_STATUSES, JOB_TYPES, type CallStatus, type JobType, type Me, type OfficeJob, type TeamMember } from "../../../shared/domain";
 import { api } from "../api";
 import { CallPill, ErrorText, PhotoGrid, StagePill } from "../components/bits";
+import { DownloadPhotos } from "../components/DownloadPhotos";
 import { callLabel, fmtDateTime, fmtDay, jobTypeLabel, mapsUrl, money } from "../util";
 
 export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; drivers: TeamMember[]; onClose: () => void }) {
@@ -158,6 +159,10 @@ export function JobDrawer({ id, me, drivers, onClose }: { id: string; me: Me; dr
               <section className="drawer-sec">
                 <div className="row">
                   <h3 style={{ margin: 0 }}>Driver photos & notes</h3>
+                  <span className="row-wrap" style={{ gap: 6 }}>
+                    {job.photos.length > 0 && <Link className="btn small" to={`/photos/${job.id}`}>🖼 Photos page</Link>}
+                    <DownloadPhotos job={job} small />
+                  </span>
                   {me.role === "scheduler" && job.stage === "scheduled" && (
                     <Link className="btn small pri" to={`/job/${job.id}`}>Fill in driver steps</Link>
                   )}
